@@ -1,6 +1,9 @@
 
+import atexit
+import os
 import re
 import subprocess
+import sqlite3
 
 
 def write_file(filename, data):
@@ -11,9 +14,11 @@ def write_file(filename, data):
     fh.close()
 
 
-def Encode(instr):
+def EncodeUncached(instr):
   write_file('tmp.S', instr + '\n')
-  subprocess.check_call(['as', '--32', 'tmp.S', '-o', 'tmp.o'])
+  rc = subprocess.call(['as', '--32', 'tmp.S', '-o', 'tmp.o'])
+  if rc != 0:
+    raise Exception('Failed to encode %r' % instr)
   proc = subprocess.Popen(['objdump', '-d', 'tmp.o'],
                           stdout=subprocess.PIPE)
   lines = list(proc.stdout)
@@ -27,6 +32,24 @@ def Encode(instr):
       bytes = [chr(int(part, 16)) for part in bytes.strip().split(' ')]
       got.extend(bytes)
   return got
+
+
+db_file = 'cache.sqlite'
+db_is_new = not os.path.exists(db_file)
+db = sqlite3.connect(db_file)
+if db_is_new:
+  db.execute('create table encoding (instr, bytes)')
+db.text_factory = str
+atexit.register(db.commit)
+
+
+def Encode(instr):
+  for bytes, in db.execute('select bytes from encoding where instr = ?',
+                           (instr,)):
+    return eval(bytes, {})
+  bytes = EncodeUncached(instr)
+  db.execute('insert into encoding values (?, ?)', (instr, repr(bytes)))
+  return bytes
 
 
 def assert_eq(x, y):
@@ -69,7 +92,7 @@ def DiscoverArg(instr_template):
   # bytes1, indexes1 = Try('0x12', '\x12')
   # bytes2, indexes2 = Try('0x21', '\x21')
   both = indexes1.intersection(indexes2)
-  assert len(both) == 1
+  assert_eq(len(both), 1)
   index = list(both)[0]
 
   def Erase(bytes):
@@ -106,7 +129,7 @@ assert_eq(DiscoverArgs2(lambda x: 'movl $%s, %s(%%ebx)' % x),
 
 
 def Tokenise(string):
-  regexp = re.compile('[A-Z]+')
+  regexp = re.compile('[A-Z_]+')
   i = 0
   while i < len(string):
     match = regexp.search(string, i)
@@ -134,17 +157,40 @@ regs = (
   '%esp',
   )
 
+prods = {}
+
+def AddProd(lhs, rhs):
+  prods[lhs] = [tuple(Tokenise(string)) for string in rhs]
+
+AddProd('MEM', ('REG', '(REG)', 'VALUE(REG)',
+                '(REG, REG_NOT_ESP)'
+                ))
+AddProd('MEM_ONLY', ('(REG)', 'VALUE(REG)'))
+AddProd('REG', regs)
+AddProd('REG_NOT_ESP', (
+  '%eax',
+  '%ebx',
+  '%ecx',
+  '%edx',
+  '%esi',
+  '%edi',
+  '%ebp',
+  ))
+AddProd('REG_OR_IMM', ('REG', '$VALUE'))
+
 def Generate(instr):
   if len(instr) == 0:
     yield []
     return
-  if instr[0] == 'REG':
-    vals = regs
+  token = instr[0]
+  if token in prods:
+    vals = (x for toks in prods[token]
+            for x in Generate(toks))
   else:
-    vals = [instr[0]]
+    vals = [[token]]
   for val in vals:
     for rest in Generate(instr[1:]):
-      yield [val] + rest
+      yield val + rest
 
 
 def TryInstr(instr):
@@ -169,20 +215,37 @@ def TryInstr(instr):
 
 
 templates = [
-  'add $VALUE, REG',
-  'sub $VALUE, REG',
-  'and $VALUE, REG',
-  'or $VALUE, REG',
-  'movl REG, REG',
-  'movl $VALUE, (REG)',
-  'movl REG, (REG)',
-  'movl (REG), REG',
-  'movl $VALUE, VALUE(REG)',
+  'nop',
+  'hlt',
+  'pushl REG',
+  'popl REG',
+  'addl REG_OR_IMM, MEM',
+  'subl REG_OR_IMM, MEM',
+  'andl REG_OR_IMM, MEM',
+  'orl REG_OR_IMM, MEM',
+  'xorl REG_OR_IMM, MEM',
+  'cmpl REG_OR_IMM, MEM',
+  'testl REG_OR_IMM, MEM',
+  'negl MEM',
+  'notl MEM',
+  'incl MEM',
+  'decl MEM',
+  # This produces overlaps with 'movl MEM, REG':
+  # 'movl REG_OR_IMM, MEM',
+  'movl $VALUE, MEM',
+  'movl MEM, REG',
+  'lea MEM_ONLY, REG', # includes pointless 'lea (%eax), %eax'
   ]
 
 
+def FormatBytes(bytes):
+  return ' '.join(FormatByte(byte) for byte in bytes)
+
+
+fh = open('patterns', 'w')
 for template in templates:
   for instr in Generate(list(Tokenise(template))):
     bytes = TryInstr(instr)
-    print '%s    %s' % (''.join(instr),
-                        ' '.join(FormatByte(byte) for byte in bytes))
+    fh.write(FormatBytes(bytes) + '\n')
+    print '%s    %s' % (''.join(instr), FormatBytes(bytes))
+fh.close()
