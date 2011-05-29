@@ -15,9 +15,9 @@ def BytesToRegexp(bytes):
 
 terms = []
 for line in open('patterns'):
-  terms.append(BytesToRegexp(line.strip().split(' ')))
+  terms.append(BytesToRegexp(line.split(':', 1)[0].split(' ')))
 
-regexp = re.compile('|'.join(terms) + '$')
+regexp = re.compile('|'.join(terms) + '$', re.DOTALL)
 
 def DecodeObjdump(lines):
   prev_disasm = ''
@@ -63,6 +63,9 @@ def Decode(filename):
   return DecodeObjdump(proc.stdout)
 
 
-for bytes, disasm in Decode('/lib/ld-linux.so.2'):
+def Format(string):
+  return ' '.join('%02x' % ord(byte) for byte in string)
+
+for bytes, disasm in Decode('runnable-ld.so'):
   ok = regexp.match(bytes) is not None
-  print ok, disasm
+  print ok, disasm, Format(bytes)
