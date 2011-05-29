@@ -5,6 +5,8 @@ import re
 import subprocess
 import sqlite3
 
+import objdump
+
 
 def write_file(filename, data):
   fh = open(filename, "w")
@@ -49,7 +51,11 @@ db.text_factory = str
 atexit.register(db.commit)
 
 
+asm_cache = {}
+
 def Encode(instr):
+  if instr in asm_cache:
+    return list(asm_cache[instr])
   for bytes, in db.execute('select bytes from encoding where instr = ?',
                            (instr,)):
     return eval(bytes, {})
@@ -185,17 +191,18 @@ regs = (
   '%esp',
   )
 
-prods = {}
+top_prods = {}
 
 def AddProd(lhs, rhs):
-  prods[lhs] = [tuple(Tokenise(string)) for string in rhs]
+  top_prods[lhs] = [tuple(Tokenise(string)) for string in rhs]
 
 AddProd('VALUE', ('VALUE8', 'VALUE32'))
 AddProd('MEM', ('(REG)',
                 'VALUE(REG)',
-                '(REG, REG_NOT_ESP)',
-                'VALUE(REG, REG_NOT_ESP)'
+                '(REG, REG_NOT_ESP, MUL)',
+                'VALUE(REG, REG_NOT_ESP, MUL)'
                 ))
+AddProd('MUL', ('1', '2', '4', '8'))
 AddProd('MEM_OR_REG', ('MEM', 'REG'))
 AddProd('REG', regs)
 AddProd('REG_NOT_ESP', (
@@ -215,18 +222,18 @@ AddProd('SRC_DEST', ('REG_OR_IMM, MEM_OR_REG',
                      # MEM, VALUE
                      ))
 
-def Generate(instr):
+def Generate(prods, instr):
   if len(instr) == 0:
     yield []
     return
   token = instr[0]
   if token in prods:
     vals = (x for toks in prods[token]
-            for x in Generate(toks))
+            for x in Generate(prods, toks))
   else:
     vals = [[token]]
   for val in vals:
-    for rest in Generate(instr[1:]):
+    for rest in Generate(prods, instr[1:]):
       yield val + rest
 
 
@@ -270,6 +277,8 @@ templates = [
   'decl MEM_OR_REG',
   'movl SRC_DEST',
   'lea MEM, REG', # includes pointless 'lea (%eax), %eax'
+  # Is this form specific to 'lea'?
+  'lea VALUE(, REG_NOT_ESP, MUL), REG',
   ]
 
 
@@ -277,11 +286,42 @@ def FormatBytes(bytes):
   return ' '.join(FormatByte(byte) for byte in bytes)
 
 
-fh = open('patterns', 'w')
+def PrimeCache():
+  tmp_prods = top_prods.copy()
+  def AddProd2(lhs, rhs):
+    tmp_prods[lhs] = [tuple(Tokenise(string)) for string in rhs]
+  AddProd2('VALUE8', ('0x11', '0x12', '0x21'))
+  AddProd2('VALUE32', ('0x11111111', '0x12345678', '0x12345679'))
+  fh = open('all.S', 'w')
+  instrs = []
+  for template in templates:
+    for instr in Generate(tmp_prods, list(Tokenise(template))):
+      instr_str = ''.join(instr)
+      fh.write(instr_str + '\n')
+      instrs.append(instr_str)
+  fh.close()
+  subprocess.check_call(['gcc', '-m32', '-c', 'all.S', '-o', 'all.o'])
+  dumped = list(objdump.Decode('all.o'))
+  assert_eq(len(instrs), len(dumped))
+  for instr, (bytes, disasm) in zip(instrs, dumped):
+    asm_cache[instr] = bytes
+
+print 'priming cache...'
+PrimeCache()
+
+fh = open('patterns.tmp', 'w')
 for template in templates:
-  for instr in Generate(list(Tokenise(template))):
+  for instr in Generate(top_prods, list(Tokenise(template))):
     bytes = TryInstr(instr)
     instr_str = ''.join(instr)
     fh.write('%s:%s\n' % (FormatBytes(bytes), instr_str))
     print '%s    %s' % (instr_str, FormatBytes(bytes))
+# Long nops
+# Why do we have two different long nops of the same length?
+fh.write('''\
+8d b4 26 00 00 00 00:lea 0x0(%esi,%eiz,1),%esi
+8d bc 27 00 00 00 00:lea 0x0(%edi,%eiz,1),%edi
+8d 74 26 00:lea 0x0(%esi,%eiz,1),%esi
+''')
 fh.close()
+os.rename('patterns.tmp', 'patterns')
