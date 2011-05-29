@@ -186,17 +186,6 @@ assert_eq(list(Tokenise('(FOO + BAR)')), ['(', 'FOO', ' + ', 'BAR', ')'])
 assert_eq(list(Tokenise('FOO ## BAR')), ['FOO', 'BAR'])
 
 
-regs = (
-  '%eax',
-  '%ebx',
-  '%ecx',
-  '%edx',
-  '%esi',
-  '%edi',
-  '%ebp',
-  '%esp',
-  )
-
 top_prods = {}
 
 def AddProd(lhs, rhs):
@@ -205,25 +194,33 @@ def AddProd(lhs, rhs):
 # No need for VALUE16 here because 'l' instructions don't use 16-bit
 # immediates, only 8-bit and 32-bit.
 AddProd('VALUE', ('VALUE8', 'VALUE32'))
-AddProd('MEM', ('(REG)',
-                'VALUE(REG)',
-                '(REG, REG_NOT_ESP, MUL)',
-                'VALUE(REG, REG_NOT_ESP, MUL)'
+AddProd('IMMEDIATE16', ('VALUE8', 'VALUE16'))
+AddProd('MEM', ('(REG32)',
+                'VALUE(REG32)',
+                '(REG32, REG32_NOT_ESP, MUL)',
+                'VALUE(REG32, REG32_NOT_ESP, MUL)'
                 ))
 AddProd('MUL', ('1', '2', '4', '8'))
-AddProd('MEM_OR_REG', ('MEM', 'REG'))
+AddProd('MEM_OR_REG32', ('MEM', 'REG32'))
 AddProd('MEM_OR_REG16', ('MEM', 'REG16'))
 AddProd('MEM_OR_REG8', ('MEM', 'REG8'))
-AddProd('REG', regs)
-AddProd('REG_NOT_ESP', (
-  '%eax',
-  '%ebx',
-  '%ecx',
-  '%edx',
-  '%esi',
-  '%edi',
-  '%ebp',
-  ))
+AddProd('REG32',
+        ('%eax',
+         '%ebx',
+         '%ecx',
+         '%edx',
+         '%esi',
+         '%edi',
+         '%ebp',
+         '%esp'))
+AddProd('REG32_NOT_ESP',
+        ('%eax',
+         '%ebx',
+         '%ecx',
+         '%edx',
+         '%esi',
+         '%edi',
+         '%ebp'))
 AddProd('REG16', ('%ax',
                   '%bx',
                   '%cx',
@@ -241,17 +238,14 @@ AddProd('REG8', ('%al',
                  '%bh',
                  '%ch',
                  '%dh'))
-AddProd('REG_OR_IMM', ('REG', '$VALUE'))
-AddProd('IMMEDIATE16', ('VALUE8', 'VALUE16'))
-AddProd('SRC_DEST', ('l REG_OR_IMM, MEM_OR_REG',
-                     'l MEM, REG',
-                     'w $IMMEDIATE16, MEM',
-                     'w $IMMEDIATE16, REG16',
+AddProd('SRC_DEST', ('l $VALUE, MEM_OR_REG32',
+                     'l REG32, MEM_OR_REG32',
+                     'l MEM, REG32',
+                     'w $IMMEDIATE16, MEM_OR_REG16',
                      'w REG16, MEM',
                      'w MEM, REG16',
                      'w REG16, REG16',
-                     'b $VALUE8, MEM',
-                     'b $VALUE8, REG8',
+                     'b $VALUE8, MEM_OR_REG8',
                      'b REG8, MEM',
                      'b MEM, REG8',
                      'b REG8, REG8',
@@ -261,8 +255,8 @@ AddProd('SRC_DEST', ('l REG_OR_IMM, MEM_OR_REG',
                      ))
 # Like SRC_DEST but without any immediate values.
 AddProd('SRC_DEST_WRITABLE',
-        ('l REG, MEM_OR_REG',
-         'l MEM, REG',
+        ('l REG32, MEM_OR_REG32',
+         'l MEM, REG32',
          'w REG16, MEM',
          'w MEM, REG16',
          'w REG16, REG16',
@@ -273,44 +267,44 @@ AddProd('SRC_DEST_WRITABLE',
 # For zero/sign-extended move.
 AddProd('EXTEND_MOVE',
         ('bw MEM_OR_REG8, REG16',
-         'bl MEM_OR_REG8, REG',
-         'wl MEM_OR_REG16, REG'))
+         'bl MEM_OR_REG8, REG32',
+         'wl MEM_OR_REG16, REG32'))
 AddProd('SHIFT_ARG',
         ('', # Shift by 1.  Same as $1, but with a different encoding.
          '%cl, ', # Shift instructions can only use %cl as the shift arg.
          '$VALUE8, '))
 AddProd('SHIFT_ARGS',
-        ('l SHIFT_ARG MEM_OR_REG',
+        ('l SHIFT_ARG MEM_OR_REG32',
          'w SHIFT_ARG MEM_OR_REG16',
          'b SHIFT_ARG MEM_OR_REG8'))
 AddProd('DSHIFT_ARGS',
-        ('l $VALUE8, REG, MEM_OR_REG',
-         'l %cl, REG, MEM_OR_REG',
+        ('l $VALUE8, REG32, MEM_OR_REG32',
+         'l %cl, REG32, MEM_OR_REG32',
          'w $VALUE8, REG16, MEM_OR_REG16',
          'w %cl, REG16, MEM_OR_REG16'))
 AddProd('BIT_SCAN_ARGS',
-        ('l MEM_OR_REG, REG',
+        ('l MEM_OR_REG32, REG32',
          'w MEM_OR_REG16, REG16'))
 AddProd('UNARY_ARG',
-        ('l MEM_OR_REG',
+        ('l MEM_OR_REG32',
          'w MEM_OR_REG16',
          'b MEM_OR_REG8'))
 # 'mul' and 'div' always use %eax/%ax/%al.  We specify it explicitly
 # here to be clearer, although gas allows the operand to be omitted.
 AddProd('DIV_ARGS',
-        ('l MEM_OR_REG, %eax',
+        ('l MEM_OR_REG32, %eax',
          'w MEM_OR_REG16, %ax',
          'b MEM_OR_REG8, %al'))
 # gas doesn't allow specifying the implicit arg for 'mul' though.
 AddProd('MUL_ARGS',
-        ('l MEM_OR_REG',
+        ('l MEM_OR_REG32',
          'w MEM_OR_REG16',
          'b MEM_OR_REG8'))
 AddProd('IMUL_ARGS',
         ('MUL_ARGS',
-         'l MEM_OR_REG, REG',
-         'l $VALUE, REG',
-         'l $VALUE, MEM_OR_REG, REG',
+         'l MEM_OR_REG32, REG32',
+         'l $VALUE, REG32',
+         'l $VALUE, MEM_OR_REG32, REG32',
          'w MEM_OR_REG16, REG16',
          'w $IMMEDIATE16, REG16',
          'w $IMMEDIATE16, MEM_OR_REG16, REG16'))
@@ -325,6 +319,7 @@ AddProd('CONDITION',
          ))
 AddProd('REPEAT',
         ('', 'rep', 'repe', 'repz', 'repne', 'repnz'))
+
 
 def Generate(prods, instr):
   if len(instr) == 0:
@@ -368,9 +363,9 @@ templates = [
   'cld',
   'std',
   'cltd', # Also known as 'cwd' or 'cdq' in Intel syntax.
-  'pushl MEM_OR_REG',
+  'pushl MEM_OR_REG32',
   'pushl $VALUE',
-  'popl MEM_OR_REG',
+  'popl MEM_OR_REG32',
   'add ## SRC_DEST',
   'adc ## SRC_DEST',
   'sub ## SRC_DEST',
@@ -384,8 +379,8 @@ templates = [
   'movs ## EXTEND_MOVE', # Sign-extend.  Known as 'movsx' in Intel syntax.
   'movz ## EXTEND_MOVE', # Zero-extend.  Known as 'movzx' in Intel syntax.
   'xchg ## SRC_DEST_WRITABLE',
-  #'xchg REG, MEM_OR_REG',
-  #'xchg MEM, REG', # Redundant
+  #'xchg REG32, MEM_OR_REG32',
+  #'xchg MEM, REG32', # Redundant
   'shl ## SHIFT_ARGS', # 'sal' is a synonym.
   'shr ## SHIFT_ARGS',
   'sar ## SHIFT_ARGS',
@@ -403,9 +398,9 @@ templates = [
   'imul ## IMUL_ARGS',
   'set ## CONDITION REG8',
   'set ## CONDITION MEM',
-  'lea MEM, REG', # includes pointless 'lea (%eax), %eax'
+  'lea MEM, REG32', # includes pointless 'lea (%eax), %eax'
   # Is this form specific to 'lea'?
-  'lea VALUE(, REG_NOT_ESP, MUL), REG',
+  'lea VALUE(, REG32_NOT_ESP, MUL), REG32',
   'REPEAT movsb %ds:(%esi), %es:(%edi)',
   'REPEAT movsw %ds:(%esi), %es:(%edi)',
   'REPEAT movsl %ds:(%esi), %es:(%edi)', # 'movsd' in Intel syntax.
