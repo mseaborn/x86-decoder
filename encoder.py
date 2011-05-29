@@ -213,6 +213,7 @@ AddProd('MEM', ('(REG)',
 AddProd('MUL', ('1', '2', '4', '8'))
 AddProd('MEM_OR_REG', ('MEM', 'REG'))
 AddProd('MEM_OR_REG16', ('MEM', 'REG16'))
+AddProd('MEM_OR_REG8', ('MEM', 'REG8'))
 AddProd('REG', regs)
 AddProd('REG_NOT_ESP', (
   '%eax',
@@ -269,37 +270,42 @@ AddProd('SRC_DEST_WRITABLE',
          'b MEM, REG8',
          'b REG8, REG8',
          ))
+# For zero/sign-extended move.
+AddProd('EXTEND_MOVE',
+        ('bw MEM_OR_REG8, REG16',
+         'bl MEM_OR_REG8, REG',
+         'wl MEM_OR_REG16, REG'))
 AddProd('SHIFT_ARG',
         ('', # Shift by 1.  Same as $1, but with a different encoding.
          '%cl, ', # Shift instructions can only use %cl as the shift arg.
          '$VALUE8, '))
 AddProd('SHIFT_ARGS',
         ('l SHIFT_ARG MEM_OR_REG',
-         'w SHIFT_ARG MEM',
-         'w SHIFT_ARG REG16',
-         'b SHIFT_ARG MEM',
-         'b SHIFT_ARG REG8'))
+         'w SHIFT_ARG MEM_OR_REG16',
+         'b SHIFT_ARG MEM_OR_REG8'))
+AddProd('DSHIFT_ARGS',
+        ('l $VALUE8, REG, MEM_OR_REG',
+         'l %cl, REG, MEM_OR_REG',
+         'w $VALUE8, REG16, MEM_OR_REG16',
+         'w %cl, REG16, MEM_OR_REG16'))
+AddProd('BIT_SCAN_ARGS',
+        ('l MEM_OR_REG, REG',
+         'w MEM_OR_REG16, REG16'))
 AddProd('UNARY_ARG',
         ('l MEM_OR_REG',
-         'w MEM',
-         'w REG16',
-         'b MEM',
-         'b REG8'))
+         'w MEM_OR_REG16',
+         'b MEM_OR_REG8'))
 # 'mul' and 'div' always use %eax/%ax/%al.  We specify it explicitly
 # here to be clearer, although gas allows the operand to be omitted.
 AddProd('DIV_ARGS',
         ('l MEM_OR_REG, %eax',
-         'w MEM, %ax',
-         'w REG16, %ax',
-         'b MEM, %al',
-         'b REG8, %al'))
+         'w MEM_OR_REG16, %ax',
+         'b MEM_OR_REG8, %al'))
 # gas doesn't allow specifying the implicit arg for 'mul' though.
 AddProd('MUL_ARGS',
         ('l MEM_OR_REG',
-         'w MEM',
-         'w REG16',
-         'b MEM',
-         'b REG8'))
+         'w MEM_OR_REG16',
+         'b MEM_OR_REG8'))
 AddProd('IMUL_ARGS',
         ('MUL_ARGS',
          'l MEM_OR_REG, REG',
@@ -317,6 +323,8 @@ AddProd('CONDITION',
          'na', 'nae', 'nb', 'nbe', 'nc', 'ne', 'ng', 'nge',
          'nl', 'nle', 'no', 'np', 'ns', 'nz',
          ))
+AddProd('REPEAT',
+        ('', 'rep', 'repe', 'repz', 'repne', 'repnz'))
 
 def Generate(prods, instr):
   if len(instr) == 0:
@@ -359,6 +367,7 @@ templates = [
   'hlt',
   'cld',
   'std',
+  'cltd', # Also known as 'cwd' or 'cdq' in Intel syntax.
   'pushl MEM_OR_REG',
   'pushl $VALUE',
   'popl MEM_OR_REG',
@@ -372,12 +381,18 @@ templates = [
   'cmp ## SRC_DEST',
   'test ## SRC_DEST',
   'mov ## SRC_DEST',
+  'movs ## EXTEND_MOVE', # Sign-extend.  Known as 'movsx' in Intel syntax.
+  'movz ## EXTEND_MOVE', # Zero-extend.  Known as 'movzx' in Intel syntax.
   'xchg ## SRC_DEST_WRITABLE',
   #'xchg REG, MEM_OR_REG',
   #'xchg MEM, REG', # Redundant
   'shl ## SHIFT_ARGS', # 'sal' is a synonym.
   'shr ## SHIFT_ARGS',
   'sar ## SHIFT_ARGS',
+  'shld ## DSHIFT_ARGS',
+  'shrd ## DSHIFT_ARGS',
+  'bsr ## BIT_SCAN_ARGS',
+  'bsf ## BIT_SCAN_ARGS',
   'neg ## UNARY_ARG',
   'not ## UNARY_ARG',
   'inc ## UNARY_ARG',
@@ -391,6 +406,18 @@ templates = [
   'lea MEM, REG', # includes pointless 'lea (%eax), %eax'
   # Is this form specific to 'lea'?
   'lea VALUE(, REG_NOT_ESP, MUL), REG',
+  'REPEAT movsb %ds:(%esi), %es:(%edi)',
+  'REPEAT movsw %ds:(%esi), %es:(%edi)',
+  'REPEAT movsl %ds:(%esi), %es:(%edi)', # 'movsd' in Intel syntax.
+  'REPEAT cmpsb %es:(%edi), %ds:(%esi)',
+  'REPEAT cmpsw %es:(%edi), %ds:(%esi)',
+  'REPEAT cmpsl %es:(%edi), %ds:(%esi)',
+  'REPEAT stosb %al, %es:(%edi)',
+  'REPEAT stosw %ax, %es:(%edi)',
+  'REPEAT stosl %eax, %es:(%edi)',
+  'REPEAT scasb %es:(%edi), %al',
+  'REPEAT scasw %es:(%edi), %ax',
+  'REPEAT scasl %es:(%edi), %eax',
   ]
 
 
