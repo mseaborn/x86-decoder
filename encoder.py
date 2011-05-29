@@ -135,6 +135,7 @@ assert_eq(DiscoverArg(['and $', 'VALUE8', ', %ebx'], 1),
 def DiscoverArgs2(template, index1, index2):
   dummies = {
     'VALUE32': '0x11111111',
+    'VALUE16': '0x1111',
     'VALUE8': '0x11',
     }
   copy1 = template[:]
@@ -162,8 +163,8 @@ assert_eq(DiscoverArgs2(['movl $', 'VALUE32', ', ', 'VALUE8', '(%ebx)'],
           ['\xc7', '\x43', 'XX', 'XX', 'XX', 'XX', 'XX'])
 
 
-def Tokenise(string):
-  regexp = re.compile('[A-Z_0-9]+')
+def Tokenise1(string):
+  regexp = re.compile('[a-zA-Z_0-9]+')
   i = 0
   while i < len(string):
     match = regexp.search(string, i)
@@ -176,8 +177,13 @@ def Tokenise(string):
       yield match.group()
       i = match.end()
 
+def Tokenise(string):
+  return [token for token in Tokenise1(string)
+          if token.strip() != '##']
+
 assert_eq(list(Tokenise('FOO + BAR')), ['FOO', ' + ', 'BAR'])
 assert_eq(list(Tokenise('(FOO + BAR)')), ['(', 'FOO', ' + ', 'BAR', ')'])
+assert_eq(list(Tokenise('FOO ## BAR')), ['FOO', 'BAR'])
 
 
 regs = (
@@ -196,6 +202,8 @@ top_prods = {}
 def AddProd(lhs, rhs):
   top_prods[lhs] = [tuple(Tokenise(string)) for string in rhs]
 
+# No need for VALUE16 here because 'l' instructions don't use 16-bit
+# immediates, only 8-bit and 32-bit.
 AddProd('VALUE', ('VALUE8', 'VALUE32'))
 AddProd('MEM', ('(REG)',
                 'VALUE(REG)',
@@ -204,6 +212,7 @@ AddProd('MEM', ('(REG)',
                 ))
 AddProd('MUL', ('1', '2', '4', '8'))
 AddProd('MEM_OR_REG', ('MEM', 'REG'))
+AddProd('MEM_OR_REG16', ('MEM', 'REG16'))
 AddProd('REG', regs)
 AddProd('REG_NOT_ESP', (
   '%eax',
@@ -214,13 +223,100 @@ AddProd('REG_NOT_ESP', (
   '%edi',
   '%ebp',
   ))
+AddProd('REG16', ('%ax',
+                  '%bx',
+                  '%cx',
+                  '%dx',
+                  '%si',
+                  '%di',
+                  '%sp',
+                  '%bp',
+                  ))
+AddProd('REG8', ('%al',
+                 '%bl',
+                 '%cl',
+                 '%dl',
+                 '%ah',
+                 '%bh',
+                 '%ch',
+                 '%dh'))
 AddProd('REG_OR_IMM', ('REG', '$VALUE'))
-AddProd('SRC_DEST', ('REG_OR_IMM, MEM_OR_REG',
-                     'MEM, REG',
+AddProd('IMMEDIATE16', ('VALUE8', 'VALUE16'))
+AddProd('SRC_DEST', ('l REG_OR_IMM, MEM_OR_REG',
+                     'l MEM, REG',
+                     'w $IMMEDIATE16, MEM',
+                     'w $IMMEDIATE16, REG16',
+                     'w REG16, MEM',
+                     'w MEM, REG16',
+                     'w REG16, REG16',
+                     'b $VALUE8, MEM',
+                     'b $VALUE8, REG8',
+                     'b REG8, MEM',
+                     'b MEM, REG8',
+                     'b REG8, REG8',
                      # Not allowed:
                      # MEM, MEM
-                     # MEM, VALUE
+                     # MEM, $VALUE
                      ))
+# Like SRC_DEST but without any immediate values.
+AddProd('SRC_DEST_WRITABLE',
+        ('l REG, MEM_OR_REG',
+         'l MEM, REG',
+         'w REG16, MEM',
+         'w MEM, REG16',
+         'w REG16, REG16',
+         'b REG8, MEM',
+         'b MEM, REG8',
+         'b REG8, REG8',
+         ))
+AddProd('SHIFT_ARG',
+        ('', # Shift by 1.  Same as $1, but with a different encoding.
+         '%cl, ', # Shift instructions can only use %cl as the shift arg.
+         '$VALUE8, '))
+AddProd('SHIFT_ARGS',
+        ('l SHIFT_ARG MEM_OR_REG',
+         'w SHIFT_ARG MEM',
+         'w SHIFT_ARG REG16',
+         'b SHIFT_ARG MEM',
+         'b SHIFT_ARG REG8'))
+AddProd('UNARY_ARG',
+        ('l MEM_OR_REG',
+         'w MEM',
+         'w REG16',
+         'b MEM',
+         'b REG8'))
+# 'mul' and 'div' always use %eax/%ax/%al.  We specify it explicitly
+# here to be clearer, although gas allows the operand to be omitted.
+AddProd('DIV_ARGS',
+        ('l MEM_OR_REG, %eax',
+         'w MEM, %ax',
+         'w REG16, %ax',
+         'b MEM, %al',
+         'b REG8, %al'))
+# gas doesn't allow specifying the implicit arg for 'mul' though.
+AddProd('MUL_ARGS',
+        ('l MEM_OR_REG',
+         'w MEM',
+         'w REG16',
+         'b MEM',
+         'b REG8'))
+AddProd('IMUL_ARGS',
+        ('MUL_ARGS',
+         'l MEM_OR_REG, REG',
+         'l $VALUE, REG',
+         'l $VALUE, MEM_OR_REG, REG',
+         'w MEM_OR_REG16, REG16',
+         'w $IMMEDIATE16, REG16',
+         'w $IMMEDIATE16, MEM_OR_REG16, REG16'))
+# 'pe' is an alias for 'p'
+# 'po' is an alias for 'np'
+AddProd('CONDITION',
+        ('a', 'ae', 'b', 'be', 'c', 'e', 'g', 'ge',
+         'l', 'le', 'o', 'p', 's', 'z',
+         # Negations:
+         'na', 'nae', 'nb', 'nbe', 'nc', 'ne', 'ng', 'nge',
+         'nl', 'nle', 'no', 'np', 'ns', 'nz',
+         ))
 
 def Generate(prods, instr):
   if len(instr) == 0:
@@ -261,21 +357,37 @@ assert_eq(TryInstr(['movl $', 'VALUE32', ', ', 'VALUE8', '(%ebx)']),
 templates = [
   'nop',
   'hlt',
+  'cld',
+  'std',
   'pushl MEM_OR_REG',
   'pushl $VALUE',
   'popl MEM_OR_REG',
-  'addl SRC_DEST',
-  'subl SRC_DEST',
-  'andl SRC_DEST',
-  'orl SRC_DEST',
-  'xorl SRC_DEST',
-  'cmpl SRC_DEST',
-  'testl SRC_DEST',
-  'negl MEM_OR_REG',
-  'notl MEM_OR_REG',
-  'incl MEM_OR_REG',
-  'decl MEM_OR_REG',
-  'movl SRC_DEST',
+  'add ## SRC_DEST',
+  'adc ## SRC_DEST',
+  'sub ## SRC_DEST',
+  'sbb ## SRC_DEST',
+  'and ## SRC_DEST',
+  'or  ## SRC_DEST',
+  'xor ## SRC_DEST',
+  'cmp ## SRC_DEST',
+  'test ## SRC_DEST',
+  'mov ## SRC_DEST',
+  'xchg ## SRC_DEST_WRITABLE',
+  #'xchg REG, MEM_OR_REG',
+  #'xchg MEM, REG', # Redundant
+  'shl ## SHIFT_ARGS', # 'sal' is a synonym.
+  'shr ## SHIFT_ARGS',
+  'sar ## SHIFT_ARGS',
+  'neg ## UNARY_ARG',
+  'not ## UNARY_ARG',
+  'inc ## UNARY_ARG',
+  'dec ## UNARY_ARG',
+  'div ## DIV_ARGS',
+  'idiv ## DIV_ARGS',
+  'mul ## MUL_ARGS',
+  'imul ## IMUL_ARGS',
+  'set ## CONDITION REG8',
+  'set ## CONDITION MEM',
   'lea MEM, REG', # includes pointless 'lea (%eax), %eax'
   # Is this form specific to 'lea'?
   'lea VALUE(, REG_NOT_ESP, MUL), REG',
@@ -291,6 +403,7 @@ def PrimeCache():
   def AddProd2(lhs, rhs):
     tmp_prods[lhs] = [tuple(Tokenise(string)) for string in rhs]
   AddProd2('VALUE8', ('0x11', '0x12', '0x21'))
+  AddProd2('VALUE16', ('0x1111', '0x1234', '0x2143'))
   AddProd2('VALUE32', ('0x11111111', '0x12345678', '0x12345679'))
   fh = open('all.S', 'w')
   instrs = []
@@ -300,7 +413,9 @@ def PrimeCache():
       fh.write(instr_str + '\n')
       instrs.append(instr_str)
   fh.close()
+  print '%i instructions' % len(instrs)
   subprocess.check_call(['gcc', '-m32', '-c', 'all.S', '-o', 'all.o'])
+  print 'run objdump...'
   dumped = list(objdump.Decode('all.o'))
   assert_eq(len(instrs), len(dumped))
   for instr, (bytes, disasm) in zip(instrs, dumped):
@@ -309,13 +424,14 @@ def PrimeCache():
 print 'priming cache...'
 PrimeCache()
 
+print 'generate...'
 fh = open('patterns.tmp', 'w')
 for template in templates:
   for instr in Generate(top_prods, list(Tokenise(template))):
     bytes = TryInstr(instr)
     instr_str = ''.join(instr)
     fh.write('%s:%s\n' % (FormatBytes(bytes), instr_str))
-    print '%s    %s' % (instr_str, FormatBytes(bytes))
+    #print '%s    %s' % (instr_str, FormatBytes(bytes))
 # Long nops
 # Why do we have two different long nops of the same length?
 fh.write('''\

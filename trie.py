@@ -36,6 +36,7 @@ def Add(bytes, instr):
     node = node.children[byte]
   node.accept = True
 
+print 'populating trie...'
 root = Trie()
 nodes = [root]
 for line in open('patterns'):
@@ -64,17 +65,31 @@ def Pr(node, stream, prev=''):
 
 print len(nodes)
 
+print 'minimising trie...'
 node_dict = {}
 node_list = []
 new_root = root.Intern(node_dict, node_list)
 print len(node_dict)
 
-fh = open('trie1', 'w')
-Pr(root, fh)
-fh.close()
+if False:
+  fh = open('trie1', 'w')
+  Pr(root, fh)
+  fh.close()
 
-fh = open('trie2', 'w')
-Pr(new_root, fh)
+  fh = open('trie2', 'w')
+  Pr(new_root, fh)
+  fh.close()
+
+for i, node in enumerate(node_list):
+  node.id = i
+info = {"start": new_root.id,
+        "map": dict((node.id, dict((key, dest.id)
+                                   for key, dest in node.children.iteritems()))
+                    for node in node_list),
+        "accepts": dict((node.id, node.accept)
+                        for node in node_list)}
+fh = open('trie_data', 'w')
+fh.write(repr(info))
 fh.close()
 
 def Dump():
@@ -87,4 +102,4 @@ def Dump():
     for key, val in sorted(node.children.iteritems()):
       print '%s -> %s' % (key, val.id)
 
-Dump()
+#Dump()
