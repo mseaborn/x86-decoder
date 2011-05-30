@@ -1,4 +1,6 @@
 
+import sys
+
 import objdump
 
 
@@ -20,7 +22,7 @@ def CheckInstr(bytes):
 def Format(string):
   return ' '.join('%02x' % ord(byte) for byte in string)
 
-for bytes, disasm in objdump.Decode('runnable-ld.so'):
+for bytes, disasm in objdump.Decode(sys.argv[1]):
   ok = CheckInstr(['%02x' % ord(byte) for byte in bytes])
   if disasm.startswith('j') or 'call' in disasm:
     ok = 'Jump'

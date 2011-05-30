@@ -198,7 +198,9 @@ AddProd('IMMEDIATE16', ('VALUE8', 'VALUE16'))
 AddProd('MEM', ('(REG32)',
                 'VALUE(REG32)',
                 '(REG32, REG32_NOT_ESP, MUL)',
-                'VALUE(REG32, REG32_NOT_ESP, MUL)'
+                'VALUE(REG32, REG32_NOT_ESP, MUL)',
+                'VALUE32(, REG32_NOT_ESP, MUL)',
+                'VALUE32',
                 ))
 AddProd('MUL', ('1', '2', '4', '8'))
 AddProd('MEM_OR_REG32', ('MEM', 'REG32'))
@@ -363,6 +365,7 @@ templates = [
   'cld',
   'std',
   'cltd', # Also known as 'cwd' or 'cdq' in Intel syntax.
+  'leave',
   'pushl MEM_OR_REG32',
   'pushl $VALUE',
   'popl MEM_OR_REG32',
@@ -384,6 +387,10 @@ templates = [
   'shl ## SHIFT_ARGS', # 'sal' is a synonym.
   'shr ## SHIFT_ARGS',
   'sar ## SHIFT_ARGS',
+  'rcl ## SHIFT_ARGS',
+  'rcr ## SHIFT_ARGS',
+  'rol ## SHIFT_ARGS',
+  'rcr ## SHIFT_ARGS',
   'shld ## DSHIFT_ARGS',
   'shrd ## DSHIFT_ARGS',
   'bsr ## BIT_SCAN_ARGS',
@@ -398,9 +405,9 @@ templates = [
   'imul ## IMUL_ARGS',
   'set ## CONDITION REG8',
   'set ## CONDITION MEM',
+  'cmov ## CONDITION ## l MEM_OR_REG32, REG32',
+  'cmov ## CONDITION ## w MEM_OR_REG16, REG16',
   'lea MEM, REG32', # includes pointless 'lea (%eax), %eax'
-  # Is this form specific to 'lea'?
-  'lea VALUE(, REG32_NOT_ESP, MUL), REG32',
   'REPEAT movsb %ds:(%esi), %es:(%edi)',
   'REPEAT movsw %ds:(%esi), %es:(%edi)',
   'REPEAT movsl %ds:(%esi), %es:(%edi)', # 'movsd' in Intel syntax.
