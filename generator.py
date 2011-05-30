@@ -92,40 +92,44 @@ def ModRM(arg_regs):
       yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest, regname, desc)
 
 
-def ModRMSingleArg(arg_regs):
-  # Non-zero values of the reg field are non-canonical or illegal or
-  # reserved for encodings of other instructions.
-  reg = 0
+def ModRMSingleArg(arg_regs, opcode):
   for mod, reg2, rest, desc in ModRM1(arg_regs):
-    yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest, desc)
+    yield ([Byte((mod << 6) | (opcode << 3) | reg2)] + rest, desc)
 
 
 patterns = (
-  (0x89, 0x88, 'mov', 'reg mem'),
-  (0x8b, 0x8a, 'mov', 'mem reg'),
-  (0xc7, 0xc6, 'mov', 'imm mem'),
+  (0x89, 0x88, 'mov', 'reg mem', None),
+  (0x8b, 0x8a, 'mov', 'mem reg', None),
+  (0xc7, 0xc6, 'mov', 'imm mem', 0),
 
-  (0x01, 0x00, 'add', 'reg mem'),
-  (0x03, 0x02, 'add', 'mem reg'),
-  (0x81, 0x80, 'add', 'imm mem'),
-  (0x83, None, 'add', 'imm8 mem'),
+  (0x01, 0x00, 'add', 'reg mem', None),
+  (0x03, 0x02, 'add', 'mem reg', None),
+  (0x81, 0x80, 'add', 'imm mem', 0),
+  (0x83, None, 'add', 'imm8 mem', 0),
+
+  (0x29, 0x28, 'sub', 'reg mem', None),
+  (0x2b, 0x2a, 'sub', 'mem reg', None),
+  (0x81, 0x80, 'sub', 'imm mem', 5),
+  (0x83, None, 'sub', 'imm8 mem', 5),
   )
 
 
 def Generate1(arg_regs, arg_size):
-  for opcode_lw, opcode_b, instr, args in patterns:
+  for opcode_lw, opcode_b, instr, args, modrm_opcode in patterns:
     if args == 'reg mem':
+      assert modrm_opcode is None
       for rest, op1, op2 in ModRM(arg_regs):
         yield opcode_lw, opcode_b, rest, instr, '%s, %s' % (op1, op2)
     elif args == 'mem reg':
+      assert modrm_opcode is None
       for rest, op1, op2 in ModRM(arg_regs):
         yield opcode_lw, opcode_b, rest, instr, '%s, %s' % (op2, op1)
     elif args == 'imm mem':
-      for rest, op in ModRMSingleArg(arg_regs):
+      for rest, op in ModRMSingleArg(arg_regs, modrm_opcode):
         yield opcode_lw, opcode_b, rest + ['XX'] * arg_size, \
             instr, '$VALUE%i, %s' % (arg_size*8, op)
     elif args == 'imm8 mem':
-      for rest, op in ModRMSingleArg(arg_regs):
+      for rest, op in ModRMSingleArg(arg_regs, modrm_opcode):
         yield opcode_lw, opcode_b, rest + ['XX'], \
             instr, '$VALUE8, %s' % op
     else:
@@ -139,6 +143,8 @@ def Generate1(arg_regs, arg_size):
         'mov', '$VALUE%i, %s' % (arg_size*8, regname)
 
   yield 0x05, 0x04, ['XX'] * arg_size, 'add', \
+      '$VALUE%i, %s' % (arg_size*8, arg_regs[0][1])
+  yield 0x2d, 0x2c, ['XX'] * arg_size, 'sub', \
       '$VALUE%i, %s' % (arg_size*8, arg_regs[0][1])
 
 
