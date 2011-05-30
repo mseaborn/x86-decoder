@@ -104,3 +104,69 @@ movl $VALUE32, %ebx
   c7 eb XX XX XX XX
   c7 f3 XX XX XX XX
   c7 fb XX XX XX XX
+
+
+# Test 16-bit operations.
+
+movw %bx, %cx
+  66 89 d9
+  66 8b cb
+movw %bx, (%ebx)
+  66 89 1b
+movw %bx, (%ebx, %ecx, 1)
+  66 89 1c 0b
+movw %bx, VALUE8(%ebx)
+  66 89 5b XX
+movw %bx, VALUE32(%ebx)
+  66 89 9b XX XX XX XX
+movw (%ebx), %bx
+  66 8b 1b
+movw $VALUE16, %bx
+  66 bb XX XX
+  66 c7 c3 XX XX
+  66 c7 cb XX XX
+  66 c7 d3 XX XX
+  66 c7 db XX XX
+  66 c7 e3 XX XX
+  66 c7 eb XX XX
+  66 c7 f3 XX XX
+  66 c7 fb XX XX
+movw VALUE32, %ax
+  66 8b 05 XX XX XX XX
+  66 a1 XX XX XX XX
+movw %ax, VALUE32
+  66 89 05 XX XX XX XX
+  66 a3 XX XX XX XX
+
+
+# Test 8-bit operations.
+
+movb %bl, %ch
+  88 dd
+  8a eb
+movb %bl, (%ebx)
+  88 1b
+movb %bl, (%ebx, %ecx, 1)
+  88 1c 0b
+movb %bl, VALUE8(%ebx)
+  88 5b XX
+movb %bl, VALUE32(%ebx)
+  88 9b XX XX XX XX
+movb (%ebx), %bl
+  8a 1b
+movb $VALUE8, %bl
+  b3 XX
+  c6 c3 XX
+  c6 cb XX
+  c6 d3 XX
+  c6 db XX
+  c6 e3 XX
+  c6 eb XX
+  c6 f3 XX
+  c6 fb XX
+movb VALUE32, %al
+  8a 05 XX XX XX XX
+  a0 XX XX XX XX
+movb %al, VALUE32
+  88 05 XX XX XX XX
+  a2 XX XX XX XX
