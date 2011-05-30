@@ -3,6 +3,17 @@ def Byte(x):
   return '%02x' % x
 
 
+regs32 = (
+  (0, '%eax'),
+  (1, '%ecx'),
+  (2, '%edx'),
+  (3, '%ebx'),
+  (4, '%esp'),
+  (5, '%ebp'),
+  (6, '%esi'),
+  (7, '%edi'))
+
+
 def Sib(mod):
   for index_reg, index_regname in ((0, '%eax'),
                                    (1, '%ecx'),
@@ -16,15 +27,9 @@ def Sib(mod):
                             (1, 2),
                             (2, 4),
                             (3, 8)):
-      for base_reg, base_regname in ((0, '%eax'),
-                                     (1, '%ecx'),
-                                     (2, '%edx'),
-                                     (3, '%ebx'),
-                                     (4, '%esp'),
-                                     (5, '%ebp'), # special case
-                                     (6, '%esi'), # missing from table in doc
-                                     (7, '%edi'), # missing from table in doc
-                                     ):
+      # 5 is a special case and is not always %ebp.
+      # %esi/%edi are missing from headings in table in doc.
+      for base_reg, base_regname in regs32:
         if index_regname == '%eiz':
           if base_regname == '%esp':
             index_result = ''
@@ -69,14 +74,7 @@ def ModRM1():
       yield (mod, reg2, sib_bytes + ['XX'] * dispsize,
              disp_str + desc)
   mod = 3
-  for reg2, regname2 in ((0, '%eax'),
-                         (1, '%ecx'),
-                         (2, '%edx'),
-                         (3, '%ebx'),
-                         (4, '%esp'),
-                         (5, '%ebp'),
-                         (6, '%esi'),
-                         (7, '%edi')):
+  for reg2, regname2 in regs32:
     yield (mod, reg2, [], regname2)
 
 
@@ -84,18 +82,70 @@ def ModRM():
   for reg, regname in enumerate(('%eax', '%ecx', '%edx', '%ebx',
                                  '%esp', '%ebp', '%esi', '%edi')):
     for mod, reg2, rest, desc in ModRM1():
-      yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest,
-             '%s, %s' % (regname, desc))
+      yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest, regname, desc)
 
 
 def Mov():
-  for rest, desc in ModRM():
-    yield [Byte(0x89)] + rest, 'movl ' + desc # MOV r/m32,r32
+  for rest, op1, op2 in ModRM():
+    # MOV r/m32,r32
+    yield [Byte(0x89)] + rest, 'movl %s, %s' % (op1, op2)
+    # MOV r32,r/m32
+    yield [Byte(0x8b)] + rest, 'movl %s, %s' % (op2, op1)
+    # MOV r/m32,imm32
+    yield [Byte(0xc7)] + rest + ['XX'] * 4, \
+        'movl $VALUE32, %s' % op2
+  yield [Byte(0xa1)] + ['XX'] * 4, 'movl VALUE32, %eax'
+  yield [Byte(0xa3)] + ['XX'] * 4, 'movl %eax, VALUE32'
+  # MOV reg32,imm32
+  for reg, regname in regs32:
+    yield [Byte(0xb8 + reg)] + ['XX'] * 4, 'movl $VALUE32, %s' % regname
 
 
 seen = set()
-for x, desc in Mov():
-  x = tuple(x)
-  assert x not in seen, x
-  seen.add(x)
-  print '%s:%s' % (' '.join(x), desc)
+all_decodings = {}
+for bytes, desc in sorted(Mov()):
+  bytes = tuple(bytes)
+  assert bytes not in seen, bytes
+  seen.add(bytes)
+  encoding_list = all_decodings.setdefault(desc, [])
+  #if len(encoding_list) == 0:
+  #  print '%s:%s' % (' '.join(bytes), desc)
+  encoding_list.append(bytes)
+
+# Print instructions with multiple encodings
+def PrintMultiple():
+  for desc, encodings in sorted(all_decodings.iteritems()):
+    if len(encodings) > 1:
+      print desc
+      for encoding in encodings:
+        print '  ' + ' '.join(encoding)
+#PrintMultiple()
+
+
+test_data = open('generator_tests.txt', 'r').read()
+
+def Test():
+  tests = {}
+  last_encoding = None
+  for line in test_data.split('\n'):
+    if line == '':
+      pass
+    elif line.startswith(' '):
+      tests[last_encoding].append(line.strip())
+    else:
+      last_encoding = line
+      tests.setdefault(last_encoding, [])
+  passed = True
+  for encoding, decodings in sorted(tests.iteritems()):
+    actual = all_decodings.get(encoding, [])
+    actual = sorted([' '.join(bytes) for bytes in actual])
+    if decodings != actual:
+      print '%s:\nEXPECTED:\n%sACTUAL:\n%s' % (
+        encoding,
+        ''.join('  %s\n' % string for string in decodings),
+        ''.join('  %s\n' % string for string in actual))
+      passed = False
+  if passed:
+    print 'PASS'
+
+Test()

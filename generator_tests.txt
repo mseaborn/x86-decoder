@@ -1,0 +1,91 @@
+
+# Test ModRM variants without SIB byte.
+
+# mod=0
+movl %ebx, (%ecx)
+  89 19
+movl %ebx, VALUE32
+  89 1d XX XX XX XX
+# mod=1
+movl %ebx, VALUE8(%ecx)
+  89 59 XX
+# mod=2
+movl %ebx, VALUE32(%ecx)
+  89 99 XX XX XX XX
+# mod=3
+movl %ebx, %ecx
+  89 d9
+  8b cb
+
+# Test ModRM variants with SIB byte.
+
+# mod=0
+movl %ebx, (%ecx, %edx, 1)
+  89 1c 11
+# mod=1
+movl %ebx, VALUE8(%ecx, %edx, 1)
+  89 5c 11 XX
+# mod=2
+movl %ebx, VALUE32(%ecx, %edx, 1)
+  89 9c 11 XX XX XX XX
+
+# %ebp is treated as a special case in this position.
+# %ebp is not allowed when mod=0.
+# Instead you have to use the longer form.
+movl %ebx, (%ebp, %ecx, 1)
+movl %ebx, VALUE8(%ebp, %ecx, 1)
+  89 5c 0d XX
+movl %ebx, VALUE32(%ebp, %ecx, 1)
+  89 9c 0d XX XX XX XX
+
+# The reason for this is that it allows 'XX(%esp)' addressing, which
+# is not allowed without a SIB byte unlike for other registers.
+# aka. movl %ebx, (%esp, %eiz, 1)
+movl %ebx, (%esp)
+  89 1c 24
+movl %ebx, VALUE8(%esp)
+  89 5c 24 XX
+movl %ebx, VALUE32(%esp)
+  89 9c 24 XX XX XX XX
+
+# Test other scales.
+movl %ebx, (%ecx, %edx, 2)
+  89 1c 51
+movl %ebx, (%ecx, %edx, 4)
+  89 1c 91
+movl %ebx, (%ecx, %edx, 8)
+  89 1c d1
+
+# %esp is not allowed in this position.
+movl %ebx, (%ecx, %esp, 1)
+movl %ebx, (%ecx, %esp, 2)
+movl %ebx, (%ecx, %esp, 4)
+movl %ebx, (%ecx, %esp, 8)
+
+# Instead, %eiz is used as a non-canonical form.
+#movl %ebx, (%ecx, %eiz, 1)
+#movl %ebx, (%ecx, %eiz, 2)
+#movl %ebx, (%ecx, %eiz, 4)
+#movl %ebx, (%ecx, %eiz, 8)
+
+
+# 'mov' has two special short forms for loading/storing %eax.
+movl VALUE32, %eax
+  8b 05 XX XX XX XX
+  a1 XX XX XX XX
+movl %eax, VALUE32
+  89 05 XX XX XX XX
+  a3 XX XX XX XX
+
+
+# 'mov' has a special short form when loading an immediate into a register.
+movl $VALUE32, %ebx
+  bb XX XX XX XX
+  c7 c3 XX XX XX XX
+  c7 cb XX XX XX XX
+  c7 d3 XX XX XX XX
+  c7 db XX XX XX XX
+  c7 e3 XX XX XX XX
+  c7 eb XX XX XX XX
+  c7 f3 XX XX XX XX
+  c7 fb XX XX XX XX
