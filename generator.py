@@ -100,36 +100,61 @@ def ModRMSingleArg(arg_regs):
     yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest, desc)
 
 
-def Mov1(arg_regs, arg_size):
-  for rest, op1, op2 in ModRM(arg_regs):
-    # MOV r/m32,r32
-    yield 0x89, 0x88, rest, '%s, %s' % (op1, op2)
-    # MOV r32,r/m32
-    yield 0x8b, 0x8a, rest, '%s, %s' % (op2, op1)
-  for rest, op in ModRMSingleArg(arg_regs):
-    # MOV r/m32,imm32
-    yield 0xc7, 0xc6, rest + ['XX'] * arg_size, \
-        '$VALUE%i, %s' % (arg_size*8, op)
-  yield 0xa1, 0xa0, ['XX'] * 4, 'VALUE32, %s' % arg_regs[0][1]
-  yield 0xa3, 0xa2, ['XX'] * 4, '%s, VALUE32' % arg_regs[0][1]
+patterns = (
+  (0x89, 0x88, 'mov', 'reg mem'),
+  (0x8b, 0x8a, 'mov', 'mem reg'),
+  (0xc7, 0xc6, 'mov', 'imm mem'),
+
+  (0x01, 0x00, 'add', 'reg mem'),
+  (0x03, 0x02, 'add', 'mem reg'),
+  (0x81, 0x80, 'add', 'imm mem'),
+  (0x83, None, 'add', 'imm8 mem'),
+  )
+
+
+def Generate1(arg_regs, arg_size):
+  for opcode_lw, opcode_b, instr, args in patterns:
+    if args == 'reg mem':
+      for rest, op1, op2 in ModRM(arg_regs):
+        yield opcode_lw, opcode_b, rest, instr, '%s, %s' % (op1, op2)
+    elif args == 'mem reg':
+      for rest, op1, op2 in ModRM(arg_regs):
+        yield opcode_lw, opcode_b, rest, instr, '%s, %s' % (op2, op1)
+    elif args == 'imm mem':
+      for rest, op in ModRMSingleArg(arg_regs):
+        yield opcode_lw, opcode_b, rest + ['XX'] * arg_size, \
+            instr, '$VALUE%i, %s' % (arg_size*8, op)
+    elif args == 'imm8 mem':
+      for rest, op in ModRMSingleArg(arg_regs):
+        yield opcode_lw, opcode_b, rest + ['XX'], \
+            instr, '$VALUE8, %s' % op
+    else:
+      raise AssertionError('Unknown pattern: %r' % args)
+
+  yield 0xa1, 0xa0, ['XX'] * 4, 'mov', 'VALUE32, %s' % arg_regs[0][1]
+  yield 0xa3, 0xa2, ['XX'] * 4, 'mov', '%s, VALUE32' % arg_regs[0][1]
   # MOV reg32,imm32
   for reg, regname in arg_regs:
     yield 0xb8 + reg, 0xb0 + reg, ['XX'] * arg_size, \
-        '$VALUE%i, %s' % (arg_size*8, regname)
+        'mov', '$VALUE%i, %s' % (arg_size*8, regname)
+
+  yield 0x05, 0x04, ['XX'] * arg_size, 'add', \
+      '$VALUE%i, %s' % (arg_size*8, arg_regs[0][1])
 
 
-def Mov():
-  for opcode_lw, opcode_b, bytes, desc in Mov1(regs32, 4):
-    yield [Byte(opcode_lw)] + bytes, 'movl ' + desc
-  for opcode_lw, opcode_b, bytes, desc in Mov1(regs16, 2):
-    yield [Byte(0x66), Byte(opcode_lw)] + bytes, 'movw ' + desc
-  for opcode_lw, opcode_b, bytes, desc in Mov1(regs8, 1):
-    yield [Byte(opcode_b)] + bytes, 'movb ' + desc
+def Generate():
+  for opcode_lw, opcode_b, bytes, instr, desc in Generate1(regs32, 4):
+    yield [Byte(opcode_lw)] + bytes, instr + 'l ' + desc
+  for opcode_lw, opcode_b, bytes, instr, desc in Generate1(regs16, 2):
+    yield [Byte(0x66), Byte(opcode_lw)] + bytes, instr + 'w ' + desc
+  for opcode_lw, opcode_b, bytes, instr, desc in Generate1(regs8, 1):
+    if opcode_b is not None:
+      yield [Byte(opcode_b)] + bytes, instr + 'b ' + desc
 
 
 seen = set()
 all_decodings = {}
-for bytes, desc in sorted(Mov()):
+for bytes, desc in sorted(Generate()):
   bytes = tuple(bytes)
   assert bytes not in seen, bytes
   seen.add(bytes)
@@ -151,18 +176,18 @@ def PrintMultiple():
 test_data = open('generator_tests.txt', 'r').read()
 
 def Test():
-  tests = {}
-  last_encoding = None
+  tests = []
+  current_list = None
   for line in test_data.split('\n'):
     if line == '':
       pass
     elif line.startswith(' '):
-      tests[last_encoding].append(line.strip())
+      current_list.append(line.strip())
     else:
-      last_encoding = line
-      tests.setdefault(last_encoding, [])
+      current_list = []
+      tests.append((line, current_list))
   passed = True
-  for encoding, decodings in sorted(tests.iteritems()):
+  for encoding, decodings in tests:
     actual = all_decodings.get(encoding, [])
     actual = sorted([' '.join(bytes) for bytes in actual])
     if decodings != actual:

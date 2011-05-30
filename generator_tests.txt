@@ -156,3 +156,37 @@ movb VALUE32, %al
 movb %al, VALUE32
   88 05 XX XX XX XX
   a2 XX XX XX XX
+
+
+addl $VALUE32, %ebx
+  81 c3 XX XX XX XX
+addl $VALUE32, (%ebx)
+  81 03 XX XX XX XX
+addb $VALUE8, %bl
+  80 c3 XX
+addl %ebx, %ecx
+  01 d9
+  03 cb
+addw %ax, %bx
+  66 01 c3
+  66 03 d8
+addb %cl, %bl
+  00 cb
+  02 d9
+
+# Extra opcodes for %eax/%ax/%al.
+addl $VALUE32, %eax
+  05 XX XX XX XX
+  81 c0 XX XX XX XX
+addw $VALUE16, %ax
+  66 05 XX XX
+  66 81 c0 XX XX
+addb $VALUE8, %al
+  04 XX
+  80 c0 XX
+
+# Extra opcodes for small immediates.
+addl $VALUE8, (%eax)
+  83 00 XX
+addw $VALUE8, (%eax)
+  66 83 00 XX
