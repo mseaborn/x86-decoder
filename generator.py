@@ -1,4 +1,8 @@
 
+import subprocess
+import objdump
+
+
 def Byte(x):
   return '%02x' % x
 
@@ -88,15 +92,24 @@ def ModRM(arg_regs):
       yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest, regname, desc)
 
 
+def ModRMSingleArg(arg_regs):
+  # Non-zero values of the reg field are non-canonical or illegal or
+  # reserved for encodings of other instructions.
+  reg = 0
+  for mod, reg2, rest, desc in ModRM1(arg_regs):
+    yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest, desc)
+
+
 def Mov1(arg_regs, arg_size):
   for rest, op1, op2 in ModRM(arg_regs):
     # MOV r/m32,r32
     yield 0x89, 0x88, rest, '%s, %s' % (op1, op2)
     # MOV r32,r/m32
     yield 0x8b, 0x8a, rest, '%s, %s' % (op2, op1)
+  for rest, op in ModRMSingleArg(arg_regs):
     # MOV r/m32,imm32
     yield 0xc7, 0xc6, rest + ['XX'] * arg_size, \
-        '$VALUE%i, %s' % (arg_size*8, op2)
+        '$VALUE%i, %s' % (arg_size*8, op)
   yield 0xa1, 0xa0, ['XX'] * 4, 'VALUE32, %s' % arg_regs[0][1]
   yield 0xa3, 0xa2, ['XX'] * 4, '%s, VALUE32' % arg_regs[0][1]
   # MOV reg32,imm32
@@ -161,4 +174,34 @@ def Test():
   if passed:
     print 'PASS'
 
+
+# Check that the golden file contains correct instructions by running
+# it through objdump.
+def CheckGoldenFile():
+  fh = open('tmp.S', 'w')
+  originals = []
+  last_encoding = None
+  for line in test_data.split('\n'):
+    if line.startswith(' '):
+      bytes = line.strip().replace('XX', '00').split()
+      asm = '.ascii "%s"\n' % ''.join('\\x' + byte for byte in bytes)
+      fh.write(asm)
+      originals.append((last_encoding, bytes))
+    elif line != '':
+      last_encoding = line
+  fh.close()
+  subprocess.check_call(['gcc', '-c', '-m32', 'tmp.S', '-o', 'tmp.o'])
+  count = 0
+  for (original, original_bytes), (bytes, disasm) in \
+        zip(originals, objdump.Decode('tmp.o')):
+    if len(original_bytes) != len(bytes):
+      print ' '.join(original_bytes)
+      print original
+      print disasm
+      raise Exception('Mismatch')
+    count += 1
+  assert count == len(originals)
+
+
 Test()
+CheckGoldenFile()

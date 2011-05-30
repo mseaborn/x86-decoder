@@ -84,6 +84,15 @@ movl %ebx, (%ecx, %eiz, 8)
   89 1c e1
 
 
+# Immediates.
+movl $VALUE32, (%ebx)
+  c7 03 XX XX XX XX
+# 'mov' has a special short form when loading an immediate into a register.
+movl $VALUE32, %ebx
+  bb XX XX XX XX
+  c7 c3 XX XX XX XX
+
+
 # 'mov' has two special short forms for loading/storing %eax.
 movl VALUE32, %eax
   8b 05 XX XX XX XX
@@ -91,19 +100,6 @@ movl VALUE32, %eax
 movl %eax, VALUE32
   89 05 XX XX XX XX
   a3 XX XX XX XX
-
-
-# 'mov' has a special short form when loading an immediate into a register.
-movl $VALUE32, %ebx
-  bb XX XX XX XX
-  c7 c3 XX XX XX XX
-  c7 cb XX XX XX XX
-  c7 d3 XX XX XX XX
-  c7 db XX XX XX XX
-  c7 e3 XX XX XX XX
-  c7 eb XX XX XX XX
-  c7 f3 XX XX XX XX
-  c7 fb XX XX XX XX
 
 
 # Test 16-bit operations.
@@ -121,16 +117,11 @@ movw %bx, VALUE32(%ebx)
   66 89 9b XX XX XX XX
 movw (%ebx), %bx
   66 8b 1b
+movw $VALUE16, (%ebx)
+  66 c7 03 XX XX
 movw $VALUE16, %bx
   66 bb XX XX
   66 c7 c3 XX XX
-  66 c7 cb XX XX
-  66 c7 d3 XX XX
-  66 c7 db XX XX
-  66 c7 e3 XX XX
-  66 c7 eb XX XX
-  66 c7 f3 XX XX
-  66 c7 fb XX XX
 movw VALUE32, %ax
   66 8b 05 XX XX XX XX
   66 a1 XX XX XX XX
@@ -154,16 +145,11 @@ movb %bl, VALUE32(%ebx)
   88 9b XX XX XX XX
 movb (%ebx), %bl
   8a 1b
+movb $VALUE8, (%ebx)
+  c6 03 XX
 movb $VALUE8, %bl
   b3 XX
   c6 c3 XX
-  c6 cb XX
-  c6 d3 XX
-  c6 db XX
-  c6 e3 XX
-  c6 eb XX
-  c6 f3 XX
-  c6 fb XX
 movb VALUE32, %al
   8a 05 XX XX XX XX
   a0 XX XX XX XX
