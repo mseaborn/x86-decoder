@@ -48,6 +48,17 @@ movl %ebx, VALUE8(%esp)
 movl %ebx, VALUE32(%esp)
   89 9c 24 XX XX XX XX
 
+# There are various non-canonical forms of 'movl %reg, XXX(%esp)'
+# with scales other than 1.
+movl %ebx, (%esp, %eiz, 2)
+  89 1c 64
+movl %ebx, (%esp, %eiz, 4)
+  89 1c a4
+movl %ebx, VALUE8(%esp, %eiz, 2)
+  89 5c 64 XX
+movl %ebx, VALUE32(%esp, %eiz, 8)
+  89 9c e4 XX XX XX XX
+
 # Test other scales.
 movl %ebx, (%ecx, %edx, 2)
   89 1c 51
@@ -63,10 +74,14 @@ movl %ebx, (%ecx, %esp, 4)
 movl %ebx, (%ecx, %esp, 8)
 
 # Instead, %eiz is used as a non-canonical form.
-#movl %ebx, (%ecx, %eiz, 1)
-#movl %ebx, (%ecx, %eiz, 2)
-#movl %ebx, (%ecx, %eiz, 4)
-#movl %ebx, (%ecx, %eiz, 8)
+movl %ebx, (%ecx, %eiz, 1)
+  89 1c 21
+movl %ebx, (%ecx, %eiz, 2)
+  89 1c 61
+movl %ebx, (%ecx, %eiz, 4)
+  89 1c a1
+movl %ebx, (%ecx, %eiz, 8)
+  89 1c e1
 
 
 # 'mov' has two special short forms for loading/storing %eax.

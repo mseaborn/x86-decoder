@@ -15,32 +15,19 @@ regs32 = (
 
 
 def Sib(mod):
-  for index_reg, index_regname in ((0, '%eax'),
-                                   (1, '%ecx'),
-                                   (2, '%edx'),
-                                   (3, '%ebx'),
-                                   (4, '%eiz'), # special case
-                                   (5, '%ebp'),
-                                   (6, '%esi'),
-                                   (7, '%edi')):
-    for scale, scaleval in ((0, 1),
-                            (1, 2),
-                            (2, 4),
-                            (3, 8)):
+  for index_reg, index_regname in regs32:
+    if index_reg == 4:
+      # %esp is not accepted in the position '(reg, %esp)'.
+      # In this context, register 4 is %eiz (an always-zero value).
+      index_regname = '%eiz'
+    for scale in (0, 1, 2, 3):
       # 5 is a special case and is not always %ebp.
       # %esi/%edi are missing from headings in table in doc.
       for base_reg, base_regname in regs32:
-        if index_regname == '%eiz':
-          if base_regname == '%esp':
-            index_result = ''
-            if scaleval != 1:
-              # non-canonical
-              continue
-          else:
-            index_result = ', %eiz' # non-canonical
-            continue
+        if index_regname == '%eiz' and base_regname == '%esp' and scale == 0:
+          index_result = ''
         else:
-          index_result = ', %s, %s' % (index_regname, scaleval)
+          index_result = ', %s, %s' % (index_regname, 1 << scale)
         if base_reg == 5 and mod == 0:
           base_regname = ''
           extra = 'VALUE32'
@@ -57,14 +44,11 @@ def ModRM1():
   for mod, dispsize, disp_str in ((0, 0, ''),
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
-    for reg2, regname2 in ((0, '%eax'),
-                           (1, '%ecx'),
-                           (2, '%edx'),
-                           (3, '%ebx'),
-                           # 4, handled below: adds SIB byte
-                           (5, '%ebp'), # only for mod != 0
-                           (6, '%esi'),
-                           (7, '%edi')):
+    for reg2, regname2 in regs32:
+      if reg2 == 4:
+        # %esp is not accepted in this position.
+        # 4 is a special value: adds SIB byte.
+        continue
       if reg2 == 5 and mod == 0:
         continue
       yield (mod, reg2, ['XX'] * dispsize,
@@ -79,8 +63,7 @@ def ModRM1():
 
 
 def ModRM():
-  for reg, regname in enumerate(('%eax', '%ecx', '%edx', '%ebx',
-                                 '%esp', '%ebp', '%esi', '%edi')):
+  for reg, regname in regs32:
     for mod, reg2, rest, desc in ModRM1():
       yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest, regname, desc)
 
