@@ -42,6 +42,6 @@ assert_eq(list(DecodeObjdump(
 
 
 def Decode(filename):
-  proc = subprocess.Popen(['objdump', '-d', filename],
+  proc = subprocess.Popen(['objdump', '-M', 'suffix', '-d', filename],
                           stdout=subprocess.PIPE)
   return DecodeObjdump(proc.stdout)
