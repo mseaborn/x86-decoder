@@ -1,70 +1,11 @@
 
+import sys
+
 import objdump_check
 
-
-def Set(ctx, var, i):
-  if var in ctx:
-    if ctx[var] == i:
-      yield ctx
-  else:
-    copy = ctx.copy()
-    copy[var] = i
-    yield copy
-
-def ForRange(var, upto):
-  def Func(ctx):
-    for i in xrange(upto):
-      for x in Set(ctx, var, i):
-        yield x
-  return Func
-
-def Equal(var, i):
-  def Func(ctx):
-    for x in Set(ctx, var, i):
-      yield x
-  return Func
-
-def EqualVar(var1, var2):
-  def Func(ctx):
-    for x in Set(ctx, var1, ctx[var2]):
-      yield x
-  return Func
-
-def NotEqual(var, i):
-  def Func(ctx):
-    if ctx[var] != i:
-      yield ctx
-  return Func
-
-def Apply(dest_var, func, arg_vars, *args):
-  def Func(ctx):
-    result = func([ctx[var] for var in arg_vars], *args)
-    for x in Set(ctx, dest_var, result):
-      yield x
-  return Func
-
-def Conj2(term1, term2):
-  def Func(ctx):
-    for x in term1(ctx):
-      for y in term2(x):
-        yield y
-  return Func
-
-def Conj(*terms):
-  return reduce(Conj2, terms)
-
-def Disj(*terms):
-  def Func(ctx):
-    for term in terms:
-      for x in term(ctx):
-        yield x
-  return Func
-
-
-# Syntactic sugar.
-def Switch(var, *branches):
-  return Disj(*[Conj(Equal(var, x), code)
-                for x, code in branches])
+from logic import (Equal, EqualVar, NotEqual, Apply, ForRange,
+                   Conj, Disj, Switch,
+                   GenerateAll, GetAll)
 
 
 def CatBits(values, sizes_in_bits):
@@ -275,17 +216,14 @@ Encode = Conj(
     Apply('desc', Format, ['inst', 'args'], '%s %s'))
 
 
-if False:
-  import pprint
-  init = {}
-  for x in Encode(init):
-    pprint.pprint(x)
-
-def GetAll():
-  return ((info['bytes'], info['desc']) for info in Encode({}))
+def GetAllEncodings():
+  got = []
+  GenerateAll(Encode, lambda info: got.append((info['bytes'], info['desc'])))
+  return got
 
 bits = 32
-objdump_check.DisassembleTest(GetAll, bits)
+objdump_check.DisassembleTest(GetAllEncodings, bits)
 
-for x in Encode({}):
-  print '%s:%s' % (' '.join(x['bytes']), x['desc'])
+GenerateAll(Encode,
+            lambda info: sys.stdout.write(
+                '%s:%s\n' % (' '.join(info['bytes']), info['desc'])))
