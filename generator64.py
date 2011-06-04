@@ -3,6 +3,7 @@ import re
 import subprocess
 
 import objdump
+import trie
 
 
 def Byte(x):
@@ -262,6 +263,7 @@ def Generate():
 
 seen = set()
 all_decodings = {}
+trie_root = trie.Trie()
 for bytes, desc in sorted(Generate()):
   bytes = tuple(bytes)
   assert bytes not in seen, bytes
@@ -270,6 +272,16 @@ for bytes, desc in sorted(Generate()):
   #if len(encoding_list) == 0:
   #  print '%s:%s' % (' '.join(bytes), desc)
   encoding_list.append(bytes)
+  trie.Add(trie_root, bytes, desc)
+
+print 'Instruction encodings:', len(seen)
+print 'Instruction decodings:', len(all_decodings)
+
+node_dict = {}
+node_list = []
+new_root = trie_root.Intern(node_dict, node_list)
+print 'DFA nodes:', len(node_dict)
+
 
 # Print instructions with multiple encodings
 def PrintMultiple():
@@ -359,7 +371,7 @@ def DisassembleTest():
     bytes2, disasm_orig = seq.next()
     if len(bytes) != len(bytes2):
       print 'Length mismatch (%i): %r %r versus %r %r' % (
-        index, bytes2, disasm_orig, bytes, disasm)
+        index, bytes2, disasm_orig, bytes, desc)
     disasm = (disasm_orig
               .replace('0x1111111111111111', 'VALUE64')
               .replace('0x11111111', 'VALUE32')

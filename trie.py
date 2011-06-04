@@ -26,23 +26,15 @@ class Trie(object):
     return copy
 
 
-def Add(bytes, instr):
+def Add(root, bytes, instr):
   node = root
   for byte in bytes:
     if byte not in node.children:
       new = Trie()
       node.children[byte] = new
-      nodes.append(new)
     node = node.children[byte]
   node.accept = True
 
-print 'populating trie...'
-root = Trie()
-nodes = [root]
-for line in open('patterns'):
-  bytes, instr = line.strip().split(':', 1)
-  bytes = bytes.split(' ')
-  Add(bytes, instr)
 
 def Pr(node, stream, indent=0):
   ind = '  ' * indent
@@ -63,34 +55,42 @@ def Pr(node, stream, prev=''):
     stream.write(prev + ' ' + key + '\n')
     Pr(val, stream, prev + ' ' + key)
 
-print len(nodes)
 
-print 'minimising trie...'
-node_dict = {}
-node_list = []
-new_root = root.Intern(node_dict, node_list)
-print len(node_dict)
+def Main():
+  print 'populating trie...'
+  root = Trie()
+  for line in open('patterns'):
+    bytes, instr = line.strip().split(':', 1)
+    bytes = bytes.split(' ')
+    Add(root, bytes, instr)
 
-if False:
-  fh = open('trie1', 'w')
-  Pr(root, fh)
+  print 'minimising trie...'
+  node_dict = {}
+  node_list = []
+  new_root = root.Intern(node_dict, node_list)
+  print len(node_dict)
+
+  if False:
+    fh = open('trie1', 'w')
+    Pr(root, fh)
+    fh.close()
+
+    fh = open('trie2', 'w')
+    Pr(new_root, fh)
+    fh.close()
+
+  for i, node in enumerate(node_list):
+    node.id = i
+  info = {"start": new_root.id,
+          "map": dict((node.id, dict((key, dest.id)
+                                     for key, dest in node.children.iteritems()))
+                      for node in node_list),
+          "accepts": dict((node.id, node.accept)
+                          for node in node_list)}
+  fh = open('trie_data', 'w')
+  fh.write(repr(info))
   fh.close()
 
-  fh = open('trie2', 'w')
-  Pr(new_root, fh)
-  fh.close()
-
-for i, node in enumerate(node_list):
-  node.id = i
-info = {"start": new_root.id,
-        "map": dict((node.id, dict((key, dest.id)
-                                   for key, dest in node.children.iteritems()))
-                    for node in node_list),
-        "accepts": dict((node.id, node.accept)
-                        for node in node_list)}
-fh = open('trie_data', 'w')
-fh.write(repr(info))
-fh.close()
 
 def Dump():
   for i, node in enumerate(node_list):
@@ -102,4 +102,6 @@ def Dump():
     for key, val in sorted(node.children.iteritems()):
       print '%s -> %s' % (key, val.id)
 
-#Dump()
+
+if __name__ == '__main__':
+  Main()
