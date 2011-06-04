@@ -216,33 +216,61 @@ ModRMSib = Conj(
                         Equal('displacement_bytes', 0),
                         Apply('rm_arg', Format, ['sib_arg'], '%s')))),
          ))
-ModRM = Conj(ForRange('reg1', 8),
-             Apply('reg1_name', RegName, ['reg1']),
-             Disj(ModRMRegister,
+ModRM = Conj(Disj(ModRMRegister,
                   ModRMAbsoluteAddr,
                   ModRMDisp,
                   ModRMSib,
                   ),
+             Equal('has_modrm_byte', 1),
              Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]))
+ModRMDoubleArg = Conj(ForRange('reg1', 8),
+                      Apply('reg1_name', RegName, ['reg1']),
+                      ModRM)
+ModRMSingleArg = Conj(EqualVar('reg1', 'modrm_opcode'),
+                      ModRM)
 
-Mov = Disj(Conj(Equal('inst', 'movl'), Equal('opcode', 0x89), ModRM,
-                Equal('args_format', 'reg rm')),
-           Conj(Equal('inst', 'movl'), Equal('opcode', 0x8b), ModRM,
-                Equal('args_format', 'rm reg')))
+Format_reg_rm = Conj(
+    Equal('immediate_bytes', 0),
+    ModRMDoubleArg,
+    Apply('args', Format, ['reg1_name', 'rm_arg'], '%s, %s'))
+Format_rm_reg = Conj(
+    Equal('immediate_bytes', 0),
+    ModRMDoubleArg,
+    Apply('args', Format, ['rm_arg', 'reg1_name'], '%s, %s'))
+Format_imm_rm = Conj(
+    Equal('immediate_bytes', 4),
+    ModRMSingleArg,
+    Apply('args', Format, ['rm_arg'], '$VALUE32, %s'))
 
-Encode = Conj(Mov,
-              Apply('bytes1', Bytes, ['opcode', 'modrm_byte']),
-              Switch('has_sib_byte',
-                     (0, EqualVar('bytes2', 'bytes1')),
-                     (1, Apply('bytes2', AppendByte, ['bytes1', 'sib_byte']))),
-              Apply('bytes', AppendWildcard, ['bytes2', 'displacement_bytes']),
-              Switch('args_format',
-                     ('reg rm', Apply('args', Format, ['reg1_name', 'rm_arg'],
-                                      '%s, %s')),
-                     ('rm reg', Apply('args', Format, ['rm_arg', 'reg1_name'],
-                                      '%s, %s')),
-                     ),
-              Apply('desc', Format, ['inst', 'args'], '%s %s'))
+Mov = Disj(
+    Conj(Equal('inst', 'movl'), Equal('opcode', 0x89), Format_reg_rm),
+    Conj(Equal('inst', 'movl'), Equal('opcode', 0x8b), Format_rm_reg),
+    Conj(Equal('inst', 'movl'), Equal('opcode', 0xc7),
+         Equal('modrm_opcode', 0), Format_imm_rm),
+    Conj(Equal('inst', 'movl'),
+         ForRange('reg1', 8),
+         Apply('reg1_name', RegName, ['reg1']),
+         Equal('opcode_top', 0xb8 >> 3),
+         Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
+         Equal('has_modrm_byte', 0),
+         Equal('has_sib_byte', 0),
+         Equal('displacement_bytes', 0),
+         Equal('immediate_bytes', 4),
+         Apply('args', Format, ['reg1_name'], '$VALUE32, %s')),
+    )
+
+Encode = Conj(
+    Mov,
+    Apply('bytes1', Bytes, ['opcode']),
+    Switch('has_modrm_byte',
+           (0, EqualVar('bytes2', 'bytes1')),
+           (1, Apply('bytes2', AppendByte, ['bytes1', 'modrm_byte']))),
+    Switch('has_sib_byte',
+           (0, EqualVar('bytes3', 'bytes2')),
+           (1, Apply('bytes3', AppendByte, ['bytes2', 'sib_byte']))),
+    Apply('bytes4', AppendWildcard, ['bytes3', 'displacement_bytes']),
+    Apply('bytes', AppendWildcard, ['bytes4', 'immediate_bytes']),
+    Apply('desc', Format, ['inst', 'args'], '%s %s'))
 
 
 if False:
@@ -256,3 +284,6 @@ def GetAll():
 
 bits = 32
 objdump_check.DisassembleTest(GetAll, bits)
+
+for x in Encode({}):
+  print '%s:%s' % (' '.join(x['bytes']), x['desc'])
