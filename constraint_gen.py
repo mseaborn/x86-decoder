@@ -76,6 +76,8 @@ def CatBits(values, sizes_in_bits):
     result = (result << size_in_bits) | value
   return result
 
+reg_count = 8
+
 regs32 = (
   '%eax',
   '%ecx',
@@ -109,8 +111,8 @@ def Format(args, format):
 
 SibEncoding = Conj(
     ForRange('scale', 4),
-    ForRange('indexreg', 8),
-    ForRange('basereg', 8),
+    ForRange('indexreg', reg_count),
+    ForRange('basereg', reg_count),
     # Note: awkward negation construction.
     # %ebp (register 5) is not accepted with a 0-byte displacement.
     # %ebp can only be used with a 1-byte or 4-byte displacement.
@@ -154,7 +156,7 @@ SibEncoding = Conj(
 
 # rm argument is a register.
 ModRMRegister = Conj(
-    ForRange('reg2', 8),
+    ForRange('reg2', reg_count),
     Apply('rm_arg', RegName, ['reg2']),
     Equal('mod', 3),
     Equal('has_sib_byte', 0),
@@ -170,7 +172,7 @@ ModRMAbsoluteAddr = Conj(
     )
 # rm argument is of the form DISP(%reg).
 ModRMDisp = Conj(
-    ForRange('reg2', 8),
+    ForRange('reg2', reg_count),
     # %esp (register 4) is not accepted in this position.
     # 4 is a special value: it adds a SIB byte.
     NotEqual('reg2', 4),
@@ -223,7 +225,7 @@ ModRM = Conj(Disj(ModRMRegister,
                   ),
              Equal('has_modrm_byte', 1),
              Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]))
-ModRMDoubleArg = Conj(ForRange('reg1', 8),
+ModRMDoubleArg = Conj(ForRange('reg1', reg_count),
                       Apply('reg1_name', RegName, ['reg1']),
                       ModRM)
 ModRMSingleArg = Conj(EqualVar('reg1', 'modrm_opcode'),
@@ -248,7 +250,7 @@ Mov = Disj(
     Conj(Equal('inst', 'movl'), Equal('opcode', 0xc7),
          Equal('modrm_opcode', 0), Format_imm_rm),
     Conj(Equal('inst', 'movl'),
-         ForRange('reg1', 8),
+         ForRange('reg1', reg_count),
          Apply('reg1_name', RegName, ['reg1']),
          Equal('opcode_top', 0xb8 >> 3),
          Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
