@@ -9,6 +9,24 @@ from logic import (Equal, EqualVar, NotEqual, Apply, ForRange,
                    assert_eq)
 
 
+def IfEqual(var, x, then_clause, else_clause):
+  return Disj(Conj(Equal(var, x), then_clause),
+              Conj(NotEqual(var, x), else_clause))
+
+def IfEqual2(var1, x1, var2, x2, then_clause, else_clause):
+  # This is better than writing the more symmetrical code:
+  #   Disj(Conj(Equal(var1, x1),
+  #             Equal(var2, x2),
+  #             then_clause),
+  #        Conj(NotEqual(var1, x1), else_clause), 
+  #        Conj(NotEqual(var2, x2), else_clause))
+  # because if var1 != x1 and var2 != x2, both of those last clauses
+  # in the disjunction will fire, causing duplicate results.
+  return IfEqual(var1, x1,
+                 IfEqual(var2, x2, then_clause, else_clause),
+                 else_clause)
+
+
 def CatBits(values, sizes_in_bits):
   result = 0
   for value, size_in_bits in zip(values, sizes_in_bits):
@@ -94,15 +112,10 @@ SibEncoding = Conj(
          # non-canonical.
          Conj(Equal('indexreg', 4),
               Equal('indexreg_name', '%eiz'),
-              # Note: awkward negation construction.
-              Disj(Conj(Equal('basereg', 4), # %esp
-                        Equal('scale', 0),
-                        Equal('mention_index', 0)),
-                   # These are two non-canonical forms:
-                   Conj(NotEqual('basereg', 4), # not %esp
-                        Equal('mention_index', 1)),
-                   Conj(NotEqual('scale', 0),
-                        Equal('mention_index', 1))),
+              IfEqual2('basereg', 4, # %esp
+                       'scale', 0,
+                       Equal('mention_index', 0),
+                       Equal('mention_index', 1)),
               )),
     Switch('mention_index',
            (1, Apply('sib_arg', Format,
@@ -245,10 +258,15 @@ GenerateAll(Conj(Equal('modrm_byte', 0), Encode),
                 '%s:%s\n' % (' '.join(info['bytes']), info['desc'])))
 
 # Test decoding an instruction.
-decoded = GetAll(Conj(Equal('bytes', '89 04 f4'.split(' ')),
-                      Encode))
-assert_eq([info['desc'] for info in decoded],
-          ['movl %eax, (%esp, %esi, 8)'])
+def TestInstruction(bytes, desc):
+  decoded = GetAll(Conj(Equal('bytes', bytes.split(' ')), Encode))
+  assert_eq([info['desc'] for info in decoded],
+            [desc])
+
+TestInstruction('89 04 f4', 'movl %eax, (%esp, %esi, 8)')
+# This used to generate the output twice because of an awkward
+# negation construct.
+TestInstruction('89 04 60', 'movl %eax, (%eax, %eiz, 2)')
 
 
 def GetAllEncodings():
