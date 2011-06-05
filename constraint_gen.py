@@ -228,7 +228,32 @@ Format_imm_eax = Conj(
     Equal('immediate_bytes', 4),
     Equal('args', '$VALUE32, %eax'))
 
-Mov = Disj(
+ArithOpcodes = Conj(
+    Disj(Conj(Apply('opcode', CatBits,
+                    ['arith_opcode', 'arith_opcode_bottom'], [5, 3]),
+              Disj(Conj(Equal('arith_opcode_bottom', 1), Format_reg_rm),
+                   Conj(Equal('arith_opcode_bottom', 3), Format_rm_reg),
+                   Conj(Equal('arith_opcode_bottom', 5), Format_imm_eax),
+                   )),
+         Conj(Equal('opcode', 0x81),
+              EqualVar('modrm_opcode', 'arith_opcode'),
+              Format_imm_rm),
+         Conj(Equal('opcode', 0x83),
+              EqualVar('modrm_opcode', 'arith_opcode'),
+              Format_imm8_rm),
+         ),
+    Switch('arith_opcode',
+           (0, Equal('inst', 'addl')),
+           (1, Equal('inst', 'orl')),
+           (2, Equal('inst', 'adcl')),
+           (3, Equal('inst', 'sbbl')),
+           (4, Equal('inst', 'andl')),
+           (5, Equal('inst', 'subl')),
+           (6, Equal('inst', 'xorl')),
+           (7, Equal('inst', 'cmpl')),
+           ))
+
+Instructions = Disj(
     Conj(Equal('inst', 'movl'), Equal('opcode', 0x89), Format_reg_rm),
     Conj(Equal('inst', 'movl'), Equal('opcode', 0x8b), Format_rm_reg),
     Conj(Equal('inst', 'movl'), Equal('opcode', 0xc7),
@@ -241,22 +266,7 @@ Mov = Disj(
          NoModRM,
          Equal('immediate_bytes', 4),
          Apply('args', Format, ['reg1_name'], '$VALUE32, %s')),
-
-    Conj(Equal('inst', 'addl'), Equal('opcode', 0x01), Format_reg_rm),
-    Conj(Equal('inst', 'addl'), Equal('opcode', 0x03), Format_rm_reg),
-    Conj(Equal('inst', 'addl'), Equal('opcode', 0x05), Format_imm_eax),
-    Conj(Equal('inst', 'addl'), Equal('opcode', 0x81),
-         Equal('modrm_opcode', 0), Format_imm_rm),
-    Conj(Equal('inst', 'addl'), Equal('opcode', 0x83),
-         Equal('modrm_opcode', 0), Format_imm8_rm),
-
-    Conj(Equal('inst', 'subl'), Equal('opcode', 0x29), Format_reg_rm),
-    Conj(Equal('inst', 'subl'), Equal('opcode', 0x2b), Format_rm_reg),
-    Conj(Equal('inst', 'subl'), Equal('opcode', 0x2d), Format_imm_eax),
-    Conj(Equal('inst', 'subl'), Equal('opcode', 0x81),
-         Equal('modrm_opcode', 5), Format_imm_rm),
-    Conj(Equal('inst', 'subl'), Equal('opcode', 0x83),
-         Equal('modrm_opcode', 5), Format_imm8_rm),
+    ArithOpcodes,
     )
 
 ConcatBytes = Conj(
@@ -273,7 +283,7 @@ ConcatBytes = Conj(
 
 Encode = Conj(
     ConcatBytes,
-    Mov,
+    Instructions,
     Apply('desc', Format, ['inst', 'args'], '%s %s'))
 
 
