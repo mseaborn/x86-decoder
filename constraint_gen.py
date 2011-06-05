@@ -89,16 +89,12 @@ SibEncoding = Conj(
     ForRange('scale', 4),
     ForRange('indexreg', reg_count),
     ForRange('basereg', reg_count),
-    # Note: awkward negation construction.
     # %ebp (register 5) is not accepted with a 0-byte displacement.
     # %ebp can only be used with a 1-byte or 4-byte displacement.
-    Disj(Conj(NotEqual('basereg', 5),
-              Apply('basereg_name', RegName, ['basereg'])),
-         Conj(NotEqual('mod', 0),
-              Apply('basereg_name', RegName, ['basereg'])),
-         Conj(Equal('basereg', 5),
-              Equal('mod', 0),
-              Equal('basereg_name', ''))),
+    IfEqual2('basereg', 5,
+             'mod', 0,
+             Equal('basereg_name', ''),
+             Apply('basereg_name', RegName, ['basereg'])),
     Apply('scale_val', ScaleVal, ['scale']),
     # %esp is not accepted in the position '(reg, %esp)'.
     # In this context, register 4 is %eiz (an always-zero value).
@@ -197,11 +193,19 @@ ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
                   ModRMSib,
                   ),
              )
-ModRMDoubleArg = Conj(ForRange('reg1', reg_count),
+ModRMDoubleArg = Conj(Equal('has_modrm_opcode', 0),
+                      ForRange('reg1', reg_count),
                       Apply('reg1_name', RegName, ['reg1']),
                       ModRM)
-ModRMSingleArg = Conj(EqualVar('reg1', 'modrm_opcode'),
+ModRMSingleArg = Conj(Equal('has_modrm_opcode', 1),
+                      EqualVar('reg1', 'modrm_opcode'),
                       ModRM)
+
+NoModRM = Conj(
+    Equal('has_modrm_byte', 0),
+    Equal('has_modrm_opcode', 0),
+    Equal('has_sib_byte', 0),
+    Equal('displacement_bytes', 0))
 
 Format_reg_rm = Conj(
     Equal('immediate_bytes', 0),
@@ -215,6 +219,14 @@ Format_imm_rm = Conj(
     Equal('immediate_bytes', 4),
     ModRMSingleArg,
     Apply('args', Format, ['rm_arg'], '$VALUE32, %s'))
+Format_imm8_rm = Conj(
+    Equal('immediate_bytes', 1),
+    ModRMSingleArg,
+    Apply('args', Format, ['rm_arg'], '$VALUE8, %s'))
+Format_imm_eax = Conj(
+    NoModRM,
+    Equal('immediate_bytes', 4),
+    Equal('args', '$VALUE32, %eax'))
 
 Mov = Disj(
     Conj(Equal('inst', 'movl'), Equal('opcode', 0x89), Format_reg_rm),
@@ -226,11 +238,25 @@ Mov = Disj(
          Apply('reg1_name', RegName, ['reg1']),
          Equal('opcode_top', 0xb8 >> 3),
          Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
-         Equal('has_modrm_byte', 0),
-         Equal('has_sib_byte', 0),
-         Equal('displacement_bytes', 0),
+         NoModRM,
          Equal('immediate_bytes', 4),
          Apply('args', Format, ['reg1_name'], '$VALUE32, %s')),
+
+    Conj(Equal('inst', 'addl'), Equal('opcode', 0x01), Format_reg_rm),
+    Conj(Equal('inst', 'addl'), Equal('opcode', 0x03), Format_rm_reg),
+    Conj(Equal('inst', 'addl'), Equal('opcode', 0x05), Format_imm_eax),
+    Conj(Equal('inst', 'addl'), Equal('opcode', 0x81),
+         Equal('modrm_opcode', 0), Format_imm_rm),
+    Conj(Equal('inst', 'addl'), Equal('opcode', 0x83),
+         Equal('modrm_opcode', 0), Format_imm8_rm),
+
+    Conj(Equal('inst', 'subl'), Equal('opcode', 0x29), Format_reg_rm),
+    Conj(Equal('inst', 'subl'), Equal('opcode', 0x2b), Format_rm_reg),
+    Conj(Equal('inst', 'subl'), Equal('opcode', 0x2d), Format_imm_eax),
+    Conj(Equal('inst', 'subl'), Equal('opcode', 0x81),
+         Equal('modrm_opcode', 5), Format_imm_rm),
+    Conj(Equal('inst', 'subl'), Equal('opcode', 0x83),
+         Equal('modrm_opcode', 5), Format_imm8_rm),
     )
 
 ConcatBytes = Conj(
@@ -251,12 +277,6 @@ Encode = Conj(
     Apply('desc', Format, ['inst', 'args'], '%s %s'))
 
 
-# Generate one example of each type of instruction.
-# We do this by preventing all values of modrm_byte from being enumerated.
-GenerateAll(Conj(Equal('modrm_byte', 0), Encode),
-            lambda info: sys.stdout.write(
-                '%s:%s\n' % (' '.join(info['bytes']), info['desc'])))
-
 # Test decoding an instruction.
 def TestInstruction(bytes, desc):
   decoded = GetAll(Conj(Equal('bytes', bytes.split(' ')), Encode))
@@ -269,14 +289,45 @@ TestInstruction('89 04 f4', 'movl %eax, (%esp, %esi, 8)')
 TestInstruction('89 04 60', 'movl %eax, (%eax, %eiz, 2)')
 
 
-def GetAllEncodings():
-  got = []
-  GenerateAll(Encode, lambda info: got.append((info['bytes'], info['desc'])))
-  return got
+def TestObjdump(clause):
+  bits = 32
+  instrs = []
+  GenerateAll(clause,
+              lambda info: instrs.append((info['bytes'], info['desc'])))
+  objdump_check.DisassembleTest(lambda: instrs, bits)
 
-bits = 32
-objdump_check.DisassembleTest(GetAllEncodings, bits)
+  # Check that there are no duplicates.
+  instrs = [(' '.join(bytes), desc) for bytes, desc in instrs]
+  assert_eq(len(instrs), len(set(instrs)))
+  return instrs
 
-GenerateAll(Encode,
+# Generate one example of each type of instruction.
+# We do this by preventing all values of modrm_byte from being enumerated.
+OneOfEachType = Disj(
+    Conj(Equal('has_modrm_opcode', 0),
+         Equal('modrm_byte', 0),
+         Encode),
+    Conj(Equal('has_modrm_opcode', 1),
+         Equal('mod', 0),
+         Equal('reg2', 0),
+         Encode))
+
+GenerateAll(OneOfEachType,
             lambda info: sys.stdout.write(
                 '%s:%s\n' % (' '.join(info['bytes']), info['desc'])))
+TestObjdump(OneOfEachType)
+
+# Check all modrm/sib byte values.
+movs = TestObjdump(Conj(Equal('opcode', 0x89), Equal('sib_byte', 0), Encode))
+assert_eq(len(movs), 256)
+movs = TestObjdump(Conj(Equal('opcode', 0x89), Equal('modrm_byte', 4), Encode))
+assert_eq(len(movs), 256)
+movs = TestObjdump(Conj(Equal('opcode', 0x89), Encode))
+# There are 6376 combinations of rmmod/sib bytes.
+# There are 3*8 = 24 rmmod bytes that indicate a sib byte follows.
+# There are 256 - 24 = 232 rmmod bytes without sib bytes.
+# There are 256 * 24 = 6144 combinations of rmmod bytes and sib bytes.
+assert_eq(len(movs), 232 + 6144)
+
+# Test all instructions.  This is slower.
+TestObjdump(Encode)
