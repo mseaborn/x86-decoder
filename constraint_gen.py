@@ -5,7 +5,8 @@ import objdump_check
 
 from logic import (Equal, EqualVar, NotEqual, Apply, ForRange,
                    Conj, Disj, Switch,
-                   GenerateAll, GetAll)
+                   GenerateAll, GetAll,
+                   assert_eq)
 
 
 def CatBits(values, sizes_in_bits):
@@ -16,6 +17,15 @@ def CatBits(values, sizes_in_bits):
     assert value < (1 << size_in_bits)
     result = (result << size_in_bits) | value
   return result
+
+def CatBitsRev(value, sizes_in_bits):
+  parts = []
+  for size_in_bits in reversed(sizes_in_bits):
+    parts.insert(0, value & ((1 << size_in_bits) - 1))
+    value >>= size_in_bits
+  assert_eq(value, 0)
+  return tuple(parts)
+CatBits.rev = CatBitsRev
 
 reg_count = 8
 
@@ -35,19 +45,26 @@ def RegName(args):
 def ScaleVal(args):
   return 1 << args[0]
 
-def Bytes(args):
-  return ['%02x' % byte for byte in args]
+def PrependByte(args):
+  byte, bytes = args
+  return ['%02x' % byte] + bytes
+def PrependByteRev(bytes):
+  return (int(bytes[0], 16), bytes[1:])
+PrependByte.rev = PrependByteRev
 
-def AppendWildcard(args):
-  bytes, size = args
-  return bytes + ['XX'] * size
-
-def AppendByte(args):
-  bytes, byte = args
-  return bytes + Bytes([byte])
+def PrependWildcard(args):
+  size, bytes = args
+  return ['XX'] * size + bytes
 
 def Format(args, format):
   return format % tuple(args)
+
+
+def CheckReversing(func, args, *extra):
+  assert_eq(func.rev(func(args, *extra), *extra), tuple(args))
+
+CheckReversing(PrependByte, [0x12, ['XX', 'XX']])
+CheckReversing(CatBits, [3, 4, 5], [2, 3, 3])
 
 
 SibEncoding = Conj(
@@ -159,13 +176,14 @@ ModRMSib = Conj(
                         Equal('displacement_bytes', 0),
                         Apply('rm_arg', Format, ['sib_arg'], '%s')))),
          ))
-ModRM = Conj(Disj(ModRMRegister,
+ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
+             Equal('has_modrm_byte', 1),
+             Disj(ModRMRegister,
                   ModRMAbsoluteAddr,
                   ModRMDisp,
                   ModRMSib,
                   ),
-             Equal('has_modrm_byte', 1),
-             Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]))
+             )
 ModRMDoubleArg = Conj(ForRange('reg1', reg_count),
                       Apply('reg1_name', RegName, ['reg1']),
                       ModRM)
@@ -202,18 +220,35 @@ Mov = Disj(
          Apply('args', Format, ['reg1_name'], '$VALUE32, %s')),
     )
 
-Encode = Conj(
-    Mov,
-    Apply('bytes1', Bytes, ['opcode']),
+ConcatBytes = Conj(
+    Apply('bytes', PrependByte, ['opcode', 'bytes1']),
     Switch('has_modrm_byte',
-           (0, EqualVar('bytes2', 'bytes1')),
-           (1, Apply('bytes2', AppendByte, ['bytes1', 'modrm_byte']))),
+           (1, Apply('bytes1', PrependByte, ['modrm_byte', 'bytes2'])),
+           (0, EqualVar('bytes1', 'bytes2'))),
     Switch('has_sib_byte',
-           (0, EqualVar('bytes3', 'bytes2')),
-           (1, Apply('bytes3', AppendByte, ['bytes2', 'sib_byte']))),
-    Apply('bytes4', AppendWildcard, ['bytes3', 'displacement_bytes']),
-    Apply('bytes', AppendWildcard, ['bytes4', 'immediate_bytes']),
+           (1, Apply('bytes2', PrependByte, ['sib_byte', 'bytes3'])),
+           (0, EqualVar('bytes2', 'bytes3'))),
+    Apply('bytes3', PrependWildcard, ['displacement_bytes', 'bytes4']),
+    Apply('bytes4', PrependWildcard, ['immediate_bytes', 'bytes5']),
+    Equal('bytes5', []))
+
+Encode = Conj(
+    ConcatBytes,
+    Mov,
     Apply('desc', Format, ['inst', 'args'], '%s %s'))
+
+
+# Generate one example of each type of instruction.
+# We do this by preventing all values of modrm_byte from being enumerated.
+GenerateAll(Conj(Equal('modrm_byte', 0), Encode),
+            lambda info: sys.stdout.write(
+                '%s:%s\n' % (' '.join(info['bytes']), info['desc'])))
+
+# Test decoding an instruction.
+decoded = GetAll(Conj(Equal('bytes', '89 04 f4'.split(' ')),
+                      Encode))
+assert_eq([info['desc'] for info in decoded],
+          ['movl %eax, (%esp, %esi, 8)'])
 
 
 def GetAllEncodings():
