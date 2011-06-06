@@ -84,6 +84,8 @@ def Apply(dest_var, func, arg_vars, *args):
       ctx.Set(dest_var, result, cont)
     elif dest_var in ctx.vars and hasattr(func, 'rev'):
       values = func.rev(ctx.vars[dest_var], *args)
+      if values is None:
+        return
       assert len(values) == len(arg_vars)
       for var, x in zip(arg_vars, values):
         if not ctx.TrySet(var, x):
@@ -96,6 +98,8 @@ def Apply(dest_var, func, arg_vars, *args):
           return ctx.TrySet(dest_var, result)
         elif dest_var in ctx.vars and hasattr(func, 'rev'):
           values = func.rev(ctx.vars[dest_var], *args)
+          if values is None:
+            return False
           assert len(values) == len(arg_vars)
           for var, x in zip(arg_vars, values):
             if not ctx.TrySet(var, x):
@@ -228,6 +232,21 @@ assert_eq(GetAll(Conj(Equal('z', ('foo', 'bar')),
 assert_eq(GetAll(Conj(Apply('z', Tuple, ['x', 'y']),
                       Equal('z', ('foo', 'bar')))),
           [{'x':'foo', 'y':'bar', 'z':('foo', 'bar')}])
+
+def TestFunc(args):
+  raise AssertionError()
+def TestFuncRev(arg):
+  return None
+TestFunc.rev = TestFuncRev
+
+# Reversing a function is allowed to fail.
+assert_eq(GetAll(Conj(Apply('z', TestFunc, ['x']),
+                      Equal('z', 123))),
+          [])
+assert_eq(GetAll(Conj(Equal('z', 123),
+                      Apply('z', TestFunc, ['x']))),
+          [])
+
 # Test Disj().
 assert_eq(GetAll(Conj(Disj(Equal('x', 'a'), Equal('x', 'b')),
                       Disj(Equal('y', 'c'), Equal('y', 'd')))),

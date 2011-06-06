@@ -29,22 +29,24 @@ def DisassembleTest(get_instructions, bits):
     if len(bytes) != len(bytes2):
       print 'Length mismatch (%i): %r %r versus %r %r' % (
         index, bytes2, disasm_orig, bytes, desc)
-    disasm = (disasm_orig
+    disasm = disasm_orig
+    # Canonicalise whitespace.
+    disasm = re.sub('\s+', ' ', disasm)
+    # Remove comments.
+    disasm = re.sub('\s+#.*$', '', disasm)
+    # Canonicalise jump targets.
+    disasm = re.sub('^(jn?[a-z]{1,2}|calll) 0x[0-9a-f]+$',
+                    '\\1 JUMP_DEST', disasm)
+    disasm = (disasm
               .replace('0x1111111111111111', 'VALUE64')
               .replace('0x11111111', 'VALUE32')
               .replace('0x1111', 'VALUE16')
               .replace('0x11', 'VALUE8')
               .replace(',', ', '))
-    # Canonicalise whitespace.
-    disasm = re.sub('\s+', ' ', disasm)
-    # Remove comments.
-    disasm = re.sub('\s+#.*$', '', disasm)
     # gas accepts a ".s" suffix to indicate a non-canonical
     # reversed-operands encoding.  With "-M suffix", objdump prints
     # this.
     disasm = disasm.replace('.s ', ' ')
-    # Canonicalise jump targets.
-    disasm = re.sub('^(jn?[a-z]{1,2}) 0x[0-9a-f]+$', '\\1 JUMP_DEST', disasm)
     # Remove trailing space from our zero-arg instructions, e.g. 'nop'.
     # TODO: Don't put the trailing space in.
     desc = desc.rstrip(' ')

@@ -32,6 +32,12 @@ def Mapping(var1, var2, pairs):
                      Equal(var2, x2))
                 for x1, x2 in pairs])
 
+def Mapping3(var1, var2, var3, pairs):
+  return Disj(*[Conj(Equal(var1, x1),
+                     Equal(var2, x2),
+                     Equal(var3, x3))
+                for x1, x2, x3 in pairs])
+
 
 def CatBits(values, sizes_in_bits):
   result = 0
@@ -73,6 +79,8 @@ def PrependByte(args):
   byte, bytes = args
   return ['%02x' % byte] + bytes
 def PrependByteRev(bytes):
+  if len(bytes) == 0:
+    return None
   return (int(bytes[0], 16), bytes[1:])
 PrependByte.rev = PrependByteRev
 
@@ -250,6 +258,28 @@ NoArguments = Conj(
     Equal('immediate_bytes', 0),
     Equal('args', ''))
 
+# We use the condition names that objdump's disasembler produces here,
+# although the alias names are more uniform.
+ConditionCodes = Mapping(
+    'cond', 'cond_name',
+    [(0, 'o'),
+     (1, 'no'),
+     (2, 'b'),
+     (3, 'ae'), # nb
+     (4, 'e'), # z
+     (5, 'ne'), # nz
+     (6, 'be'),
+     (7, 'a'), # nbe
+     (8, 's'),
+     (9, 'ns'),
+     (10, 'p'),
+     (11, 'np'),
+     (12, 'l'),
+     (13, 'ge'), # nl
+     (14, 'le'),
+     (15, 'g'), # nle
+     ])
+
 ArithOpcodes = Conj(
     Disj(Conj(Apply('opcode', CatBits,
                     ['arith_opcode', 'arith_opcode_bottom'], [5, 3]),
@@ -275,11 +305,19 @@ ArithOpcodes = Conj(
            (7, Equal('inst', 'cmpl')),
            ))
 
-Instructions = Disj(
+OneByteOpcodes = Disj(
     Conj(Equal('inst', 'movl'), Equal('opcode', 0x89), Format_reg_rm),
     Conj(Equal('inst', 'movl'), Equal('opcode', 0x8b), Format_rm_reg),
     Conj(Equal('inst', 'movl'), Equal('opcode', 0xc7),
          Equal('modrm_opcode', 0), Format_imm_rm),
+    Conj(Equal('inst', 'movl'), Equal('opcode', 0xa1),
+         NoModRM,
+         Equal('immediate_bytes', 4),
+         Equal('args', 'VALUE32, %eax')),
+    Conj(Equal('inst', 'movl'), Equal('opcode', 0xa3),
+         NoModRM,
+         Equal('immediate_bytes', 4),
+         Equal('args', '%eax, VALUE32')),
     Conj(Equal('inst', 'movl'),
          ForRange('reg1', reg_count),
          Apply('reg1_name', RegName, ['reg1']),
@@ -320,26 +358,7 @@ Instructions = Disj(
     # Short (8-bit offset) jumps
     Conj(Equal('opcode_top', 0x70 >> 4),
          Apply('opcode', CatBits, ['opcode_top', 'cond'], [4, 4]),
-         # We use the condition names that objdump's disasembler
-         # produces here, although the alias names are more uniform.
-         Mapping('cond', 'cond_name',
-                 [(0, 'o'),
-                  (1, 'no'),
-                  (2, 'b'),
-                  (3, 'ae'), # nb
-                  (4, 'e'), # z
-                  (5, 'ne'), # nz
-                  (6, 'be'),
-                  (7, 'a'), # nbe
-                  (8, 's'),
-                  (9, 'ns'),
-                  (10, 'p'),
-                  (11, 'np'),
-                  (12, 'l'),
-                  (13, 'ge'), # nl
-                  (14, 'le'),
-                  (15, 'g'), # nle
-                  ]),
+         ConditionCodes,
          NoModRM,
          Equal('immediate_bytes', 1),
          Equal('args', 'JUMP_DEST'),
@@ -378,22 +397,66 @@ Instructions = Disj(
     Conj(Equal('inst', 'cwtl'), Equal('opcode', 0x98), NoArguments),
     # 'cltd' is also known as 'cwd'/'cdq' in Intel syntax.
     Conj(Equal('inst', 'cltd'), Equal('opcode', 0x99), NoArguments),
+
+    Conj(Equal('inst', 'calll'),
+         Equal('opcode', 0xe8),
+         NoModRM,
+         Equal('immediate_bytes', 4),
+         Equal('args', 'JUMP_DEST')),
+
+    # String operations.
+    Conj(Mapping3('inst', 'opcode', 'args',
+                  [('movsb', 0xa4, '%ds:(%esi), %es:(%edi)'),
+                   ('movsl', 0xa5, '%ds:(%esi), %es:(%edi)'),
+                   ('cmpsb', 0xa6, '%es:(%edi), %ds:(%esi)'),
+                   ('cmpsl', 0xa7, '%es:(%edi), %ds:(%esi)'),
+                   ('stosb', 0xaa, '%al, %es:(%edi)'),
+                   ('stosl', 0xab, '%eax, %es:(%edi)'),
+                   ('lodsb', 0xac, '%ds:(%esi), %al'),
+                   ('lodsl', 0xad, '%ds:(%esi), %eax'),
+                   ('scasb', 0xae, '%es:(%edi), %al'),
+                   ('scasl', 0xaf, '%es:(%edi), %eax'),
+                   ]),
+         NoModRM,
+         Equal('immediate_bytes', 0)),
+
+    Conj(Equal('inst', 'testl'), Equal('opcode', 0xa9), Format_imm_eax),
+    )
+
+TwoByteOpcodes = Disj(
+    Conj(Equal('opcode', 0x0f),
+         Equal('opcode2_top', 0x80 >> 4),
+         Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
+         ConditionCodes,
+         NoModRM,
+         Equal('immediate_bytes', 4),
+         Equal('args', 'JUMP_DEST'),
+         Apply('inst', Format, ['cond_name'], 'j%s')),
     )
 
 ConcatBytes = Conj(
     Apply('bytes', PrependByte, ['opcode', 'bytes1']),
-    Switch('has_modrm_byte',
-           (1, Apply('bytes1', PrependByte, ['modrm_byte', 'bytes2'])),
+    Switch('has_opcode2',
+           (1, Apply('bytes1', PrependByte, ['opcode2', 'bytes2'])),
            (0, EqualVar('bytes1', 'bytes2'))),
-    Switch('has_sib_byte',
-           (1, Apply('bytes2', PrependByte, ['sib_byte', 'bytes3'])),
+    Switch('has_modrm_byte',
+           (1, Apply('bytes2', PrependByte, ['modrm_byte', 'bytes3'])),
            (0, EqualVar('bytes2', 'bytes3'))),
-    Apply('bytes3', PrependWildcard, ['displacement_bytes', 'bytes4']),
-    Apply('bytes4', PrependWildcard, ['immediate_bytes', 'bytes5']),
-    Equal('bytes5', []))
+    Switch('has_sib_byte',
+           (1, Apply('bytes3', PrependByte, ['sib_byte', 'bytes4'])),
+           (0, EqualVar('bytes3', 'bytes4'))),
+    Apply('bytes4', PrependWildcard, ['displacement_bytes', 'bytes5']),
+    Apply('bytes5', PrependWildcard, ['immediate_bytes', 'bytes6']),
+    Equal('bytes6', []))
+
+# We call ConcatBytes after setting has_opcode2 to reduce the
+# expanding-out of combinations that ConcatBytes does.
+Instructions = Disj(
+    Conj(Equal('has_opcode2', 0), ConcatBytes, OneByteOpcodes),
+    Conj(Equal('has_opcode2', 1), ConcatBytes, TwoByteOpcodes),
+    )
 
 Encode = Conj(
-    ConcatBytes,
     Instructions,
     Apply('desc', Format, ['inst', 'args'], '%s %s'))
 
@@ -404,6 +467,7 @@ def TestInstruction(bytes, desc):
   assert_eq([info['desc'] for info in decoded],
             [desc])
 
+TestInstruction('90', 'nop ')
 TestInstruction('89 04 f4', 'movl %eax, (%esp, %esi, 8)')
 # This used to generate the output twice because of an awkward
 # negation construct.
