@@ -26,6 +26,12 @@ def IfEqual2(var1, x1, var2, x2, then_clause, else_clause):
                  IfEqual(var2, x2, then_clause, else_clause),
                  else_clause)
 
+# This could be optimised to create fewer choice points.
+def Mapping(var1, var2, pairs):
+  return Disj(*[Conj(Equal(var1, x1),
+                     Equal(var2, x2))
+                for x1, x2 in pairs])
+
 
 def CatBits(values, sizes_in_bits):
   result = 0
@@ -223,10 +229,26 @@ Format_imm8_rm = Conj(
     Equal('immediate_bytes', 1),
     ModRMSingleArg,
     Apply('args', Format, ['rm_arg'], '$VALUE8, %s'))
+Format_imm_rm_reg = Conj(
+    Equal('immediate_bytes', 4),
+    ModRMDoubleArg,
+    Apply('args', Format, ['rm_arg', 'reg1_name'], '$VALUE32, %s, %s'))
+Format_imm8_rm_reg = Conj(
+    Equal('immediate_bytes', 1),
+    ModRMDoubleArg,
+    Apply('args', Format, ['rm_arg', 'reg1_name'], '$VALUE8, %s, %s'))
+Format_rm = Conj(
+    Equal('immediate_bytes', 0),
+    ModRMSingleArg,
+    EqualVar('args', 'rm_arg'))
 Format_imm_eax = Conj(
     NoModRM,
     Equal('immediate_bytes', 4),
     Equal('args', '$VALUE32, %eax'))
+NoArguments = Conj(
+    NoModRM,
+    Equal('immediate_bytes', 0),
+    Equal('args', ''))
 
 ArithOpcodes = Conj(
     Disj(Conj(Apply('opcode', CatBits,
@@ -266,7 +288,96 @@ Instructions = Disj(
          NoModRM,
          Equal('immediate_bytes', 4),
          Apply('args', Format, ['reg1_name'], '$VALUE32, %s')),
+
     ArithOpcodes,
+
+    Conj(Disj(Conj(Equal('inst', 'incl'),  Equal('opcode_top', 0x40 >> 3)),
+              Conj(Equal('inst', 'decl'),  Equal('opcode_top', 0x48 >> 3)),
+              Conj(Equal('inst', 'pushl'), Equal('opcode_top', 0x50 >> 3)),
+              Conj(Equal('inst', 'popl'),  Equal('opcode_top', 0x58 >> 3)),
+              ),
+         ForRange('reg', reg_count),
+         Apply('reg_name', RegName, ['reg']),
+         Apply('opcode', CatBits, ['opcode_top', 'reg'], (5, 3)),
+         NoModRM,
+         Equal('immediate_bytes', 0),
+         EqualVar('args', 'reg_name')),
+
+    Conj(Equal('inst', 'pushl'),
+         Equal('opcode', 0x68),
+         NoModRM,
+         Equal('immediate_bytes', 4),
+         Equal('args', '$VALUE32')),
+    Conj(Equal('inst', 'pushl'),
+         Equal('opcode', 0x6a),
+         NoModRM,
+         Equal('immediate_bytes', 1),
+         Equal('args', '$VALUE8')),
+
+    Conj(Equal('inst', 'imull'), Equal('opcode', 0x69), Format_imm_rm_reg),
+    Conj(Equal('inst', 'imull'), Equal('opcode', 0x6b), Format_imm8_rm_reg),
+
+    # Short (8-bit offset) jumps
+    Conj(Equal('opcode_top', 0x70 >> 4),
+         Apply('opcode', CatBits, ['opcode_top', 'cond'], [4, 4]),
+         # We use the condition names that objdump's disasembler
+         # produces here, although the alias names are more uniform.
+         Mapping('cond', 'cond_name',
+                 [(0, 'o'),
+                  (1, 'no'),
+                  (2, 'b'),
+                  (3, 'ae'), # nb
+                  (4, 'e'), # z
+                  (5, 'ne'), # nz
+                  (6, 'be'),
+                  (7, 'a'), # nbe
+                  (8, 's'),
+                  (9, 'ns'),
+                  (10, 'p'),
+                  (11, 'np'),
+                  (12, 'l'),
+                  (13, 'ge'), # nl
+                  (14, 'le'),
+                  (15, 'g'), # nle
+                  ]),
+         NoModRM,
+         Equal('immediate_bytes', 1),
+         Equal('args', 'JUMP_DEST'),
+         Apply('inst', Format, ['cond_name'], 'j%s')),
+
+    Conj(Equal('inst', 'testl'), Equal('opcode', 0x85), Format_reg_rm),
+    Conj(Equal('inst', 'xchgl'), Equal('opcode', 0x87), Format_reg_rm),
+    Conj(Equal('inst', 'leal'),
+         Equal('opcode', 0x8d),
+         Format_rm_reg,
+         # Disallow instructions of the form 'leal %reg, %reg'.
+         # We require a modrm byte that looks like a memory access,
+         # though the instruction does not perform a memory access.
+         NotEqual('mod', 3)),
+    Conj(Equal('inst', 'popl'),
+         Equal('opcode', 0x8f),
+         Equal('modrm_opcode', 0),
+         Format_rm),
+
+    Conj(Equal('inst', 'nop'), Equal('opcode', 0x90), NoArguments),
+    # 'xchg %eax, %reg'
+    Conj(Equal('inst', 'xchgl'),
+         ForRange('reg1', reg_count),
+         # 'xchg %eax, %eax' (0x90) is disassembled as 'nop'.
+         # On x86-64, it really is a no-op and does not clear the top
+         # bits of %rax.
+         NotEqual('reg1', 0), # %eax
+         Apply('reg1_name', RegName, ['reg1']),
+         Equal('opcode_top', 0x90 >> 3),
+         Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
+         NoModRM,
+         Equal('immediate_bytes', 0),
+         Apply('args', Format, ['reg1_name'], '%%eax, %s')),
+
+    # 'cwtl' is also known as 'cbw'/'cwde' in Intel syntax.
+    Conj(Equal('inst', 'cwtl'), Equal('opcode', 0x98), NoArguments),
+    # 'cltd' is also known as 'cwd'/'cdq' in Intel syntax.
+    Conj(Equal('inst', 'cltd'), Equal('opcode', 0x99), NoArguments),
     )
 
 ConcatBytes = Conj(
@@ -333,11 +444,19 @@ assert_eq(len(movs), 256)
 movs = TestObjdump(Conj(Equal('opcode', 0x89), Equal('modrm_byte', 4), Encode))
 assert_eq(len(movs), 256)
 movs = TestObjdump(Conj(Equal('opcode', 0x89), Encode))
-# There are 6376 combinations of rmmod/sib bytes.
-# There are 3*8 = 24 rmmod bytes that indicate a sib byte follows.
-# There are 256 - 24 = 232 rmmod bytes without sib bytes.
-# There are 256 * 24 = 6144 combinations of rmmod bytes and sib bytes.
+# There are 6376 combinations of modrm/sib bytes.
+# There are 3*8 = 24 modrm bytes that indicate a sib byte follows.
+# There are 256 - 24 = 232 modrm bytes without sib bytes.
+# There are 256 * 24 = 6144 combinations of modrm bytes and sib bytes.
 assert_eq(len(movs), 232 + 6144)
+
+# 'lea' is special since it uses modrm but does not access memory.
+# This means 'leal %eax, %eax' is not valid.  Check that we exclude it.
+# We do not exclude redundant forms such as 'leal (%ebx), %eax'
+# (which is equivalent to 'movl %ebx, %eax').
+leas = TestObjdump(Conj(Equal('inst', 'leal'), Encode))
+# Subtract the number of modrm byte values that are excluded.
+assert_eq(len(leas), 6376 - 64)
 
 # Test all instructions.  This is slower.
 TestObjdump(Encode)

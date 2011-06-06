@@ -43,6 +43,13 @@ def DisassembleTest(get_instructions, bits):
     # reversed-operands encoding.  With "-M suffix", objdump prints
     # this.
     disasm = disasm.replace('.s ', ' ')
+    # Canonicalise jump targets.
+    disasm = re.sub('^(jn?[a-z]{1,2}) 0x[0-9a-f]+$', '\\1 JUMP_DEST', disasm)
+    # Remove trailing space from our zero-arg instructions, e.g. 'nop'.
+    # TODO: Don't put the trailing space in.
+    desc = desc.rstrip(' ')
+    # objdump also puts in trailing whitespace sometimes.
+    disasm = disasm.rstrip(' ')
     if desc != disasm:
       print 'Mismatch (%i): %r != %r (%r) (%s)' % (
         index, desc, disasm, disasm_orig, ' '.join(bytes))
