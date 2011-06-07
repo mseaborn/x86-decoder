@@ -317,6 +317,10 @@ Format_rm = Conj(
     Equal('immediate_bytes', 0),
     ModRMSingleArg,
     EqualVar('args', 'rm_arg'))
+Format_jump_rm = Conj(
+    Equal('immediate_bytes', 0),
+    ModRMSingleArg,
+    Apply('args', Format, ['rm_arg'], '*%s'))
 Format_imm_eax = Conj(
     DataOperationWithoutModRM,
     DefaultImmediateSize,
@@ -366,6 +370,7 @@ ArithOpcodes = Conj(
                    Conj(Equal('arith_opcode_format', 1), Format_rm_reg),
                    Conj(Equal('arith_opcode_format', 2), Format_imm_eax),
                    )),
+         # Group 1
          Conj(OpcodePair(0x80),
               EqualVar('modrm_opcode', 'arith_opcode'),
               Format_imm_rm),
@@ -464,6 +469,13 @@ OneByteOpcodes = Disj(
          Equal('modrm_opcode', 0),
          Format_rm),
 
+    Conj(Equal('inst', 'hlt'),
+         Equal('opcode', 0xf4),
+         NoModRM,
+         Equal('has_inst_suffix', 0),
+         Equal('has_data16_prefix', 0),
+         Equal('immediate_bytes', 0),
+         Equal('args', '')),
     Conj(Equal('inst', 'nop'),
          Equal('opcode', 0x90),
          NoModRM,
@@ -550,6 +562,78 @@ OneByteOpcodes = Disj(
          Equal('immediate_bytes', 0)),
 
     Conj(Equal('inst', 'test'), OpcodePair(0xa8), Format_imm_eax),
+
+    # Short (8-bit offset) jump.
+    # We do not handle 'jcxz' because it uses an addr16 prefix.
+    Conj(Equal('inst', 'jecxz'),
+         Equal('opcode', 0xe3),
+         Equal('has_data16_prefix', 0),
+         Equal('has_inst_suffix', 0),
+         NoModRM,
+         Equal('immediate_bytes', 1),
+         Equal('args', 'JUMP_DEST')),
+
+    # Unconditional jump.
+    Conj(Equal('inst', 'jmp'),
+         OpcodeLW(0xe9),
+         NoModRM,
+         Equal('has_inst_suffix', 1),
+         Mapping('has_data16_prefix', 'immediate_bytes',
+                 [(0, 4),
+                  (1, 2)]),
+         Equal('args', 'JUMP_DEST')),
+    Conj(Equal('inst', 'jmp'),
+         Equal('opcode', 0xeb),
+         Equal('not_byte_op', 0),
+         Equal('has_data16_prefix', 0),
+         NoModRM,
+         # objdump is a little inconsistent about whether jmp[lwb]
+         # have a prefix when disassembled.
+         Equal('has_inst_suffix', 0),
+         Equal('immediate_bytes', 1),
+         Equal('args', 'JUMP_DEST')),
+
+    Conj(Mapping('inst', 'opcode',
+                 [('cmc', 0xf5), # Complement carry flag
+                  ('clc', 0xf8), # Clear carry flag
+                  ('stc', 0xf9), # Set carry flag
+                  ('cld', 0xfc), # Clear direction flag
+                  ('std', 0xfd), # Set direction flag
+                  ]),
+         NoModRM,
+         Equal('has_inst_suffix', 0),
+         Equal('has_data16_prefix', 0),
+         Equal('immediate_bytes', 0),
+         Equal('args', '')),
+
+    # Group 4
+    Conj(Equal('opcode', 0xfe),
+         Mapping('inst', 'modrm_opcode',
+                 [('inc', 0),
+                  ('dec', 1)]),
+         Equal('not_byte_op', 0),
+         Format_rm),
+    # Group 5
+    Conj(Equal('opcode', 0xff),
+         Mapping3('inst', 'modrm_opcode', 'is_indirect_jump',
+                 [('inc', 0, 0),
+                  ('dec', 1, 0),
+                  ('call', 2, 1),
+                  # Leave out lcall/ljmp for now because 'ljmp *%eax'
+                  # is not a valid instruction (ljmp reads multiple
+                  # words from memory) and we would need to add an
+                  # additional constraint, similar to 'lea'.
+                  #('lcall', 3, 1),
+                  ('jmp', 4, 1),
+                  #('ljmp', 5, 1),
+                  ('push', 6, 0)]),
+         Equal('not_byte_op', 1),
+         # Indirect jumps differ syntactically in order to distinguish
+         # 'jmp 0x1234' (jump to address) from 'jmp *0x1234' (jump to
+         # address fetched from memory).
+         Switch('is_indirect_jump',
+                (0, Format_rm),
+                (1, Format_jump_rm))),
     )
 
 TwoByteOpcodes = Disj(

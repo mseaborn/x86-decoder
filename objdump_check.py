@@ -35,7 +35,7 @@ def DisassembleTest(get_instructions, bits):
     # Remove comments.
     disasm = re.sub('\s+#.*$', '', disasm)
     # Canonicalise jump targets.
-    disasm = re.sub('^(jn?[a-z]{1,2}|calll) 0x[0-9a-f]+$',
+    disasm = re.sub('^(jn?[a-z]{1,2}|calll|jmp[lw]?|je?cxz) 0x[0-9a-f]+$',
                     '\\1 JUMP_DEST', disasm)
     disasm = (disasm
               .replace('0x1111111111111111', 'VALUE64')
