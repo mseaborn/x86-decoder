@@ -79,11 +79,24 @@ regs16 = (
   '%si',
   '%di')
 
+regs8 = (
+  '%al',
+  '%cl',
+  '%dl',
+  '%bl',
+  '%ah',
+  '%ch',
+  '%dh',
+  '%bh')
+
 def RegName(args):
   return regs32[args[0]]
 
 def Reg16Name(args):
   return regs16[args[0]]
+
+def Reg8Name(args):
+  return regs8[args[0]]
 
 def ScaleVal(args):
   return 1 << args[0]
@@ -149,9 +162,16 @@ SibEncoding = Conj(
     )
 
 def GetArgRegname(name_var, number_var):
-  return Switch('has_data16_prefix',
-                (0, Apply(name_var, RegName, [number_var])),
-                (1, Apply(name_var, Reg16Name, [number_var])))
+  # The data16 prefix is not valid on byte operations.
+  return Disj(Conj(Equal('has_data16_prefix', 0),
+                   Equal('not_byte_op', 1),
+                   Apply(name_var, RegName, [number_var])),
+              Conj(Equal('has_data16_prefix', 1),
+                   Equal('not_byte_op', 1),
+                   Apply(name_var, Reg16Name, [number_var])),
+              Conj(Equal('has_data16_prefix', 0),
+                   Equal('not_byte_op', 0),
+                   Apply(name_var, Reg8Name, [number_var])))
 
 # For when %rax/%eax/%ax/%al is implicitly accessed.
 GetAccArgRegname = Conj(
@@ -258,10 +278,13 @@ NoDataOperation = Conj(
 
 DefaultImmediateSize = \
     Switch('has_data16_prefix',
-           (0, Conj(Equal('immediate_bytes', 4),
-                    Equal('immediate_desc', '$VALUE32'))),
            (1, Conj(Equal('immediate_bytes', 2),
-                    Equal('immediate_desc', '$VALUE16'))))
+                    Equal('immediate_desc', '$VALUE16'))),
+           (0, Switch('not_byte_op',
+                      (0, Conj(Equal('immediate_bytes', 1),
+                               Equal('immediate_desc', '$VALUE8'))),
+                      (1, Conj(Equal('immediate_bytes', 4),
+                               Equal('immediate_desc', '$VALUE32'))))))
 
 Format_reg_rm = Conj(
     Equal('immediate_bytes', 0),
@@ -322,17 +345,34 @@ ConditionCodes = Mapping(
      (15, 'g'), # nle
      ])
 
+# Many opcodes come in pairs: X is the 8-bit version, and X+1 is the
+# 32-bit version which can be made into 16-bit with the data16 prefix.
+def OpcodePair(opcode_base):
+  # This could be done with CatBits but it's not really worth it.
+  return Mapping('opcode', 'not_byte_op',
+                 [(opcode_base, 0),
+                  (opcode_base + 1, 1)])
+
+# Opcodes that work with 'l' (32-bit) or 'w' (16-bit) suffixes.
+def OpcodeLW(opcode_byte):
+  return Conj(Equal('opcode', opcode_byte),
+              Equal('not_byte_op', 1))
+
 ArithOpcodes = Conj(
     Disj(Conj(Apply('opcode', CatBits,
-                    ['arith_opcode', 'arith_opcode_bottom'], [5, 3]),
-              Disj(Conj(Equal('arith_opcode_bottom', 1), Format_reg_rm),
-                   Conj(Equal('arith_opcode_bottom', 3), Format_rm_reg),
-                   Conj(Equal('arith_opcode_bottom', 5), Format_imm_eax),
+                    ['arith_opcode', 'arith_opcode_format', 'not_byte_op'],
+                    [5, 2, 1]),
+              Disj(Conj(Equal('arith_opcode_format', 0), Format_reg_rm),
+                   Conj(Equal('arith_opcode_format', 1), Format_rm_reg),
+                   Conj(Equal('arith_opcode_format', 2), Format_imm_eax),
                    )),
-         Conj(Equal('opcode', 0x81),
+         Conj(OpcodePair(0x80),
               EqualVar('modrm_opcode', 'arith_opcode'),
               Format_imm_rm),
-         Conj(Equal('opcode', 0x83),
+         # 0x82 is a hole in the table.  We don't use OpcodePair(0x82)
+         # here because 0x80 and 0x82 would be equivalent (both 8-bit
+         # ops with imm8).
+         Conj(OpcodeLW(0x83),
               EqualVar('modrm_opcode', 'arith_opcode'),
               Format_imm8_rm),
          ),
@@ -348,16 +388,16 @@ ArithOpcodes = Conj(
            ))
 
 OneByteOpcodes = Disj(
-    Conj(Equal('inst', 'mov'), Equal('opcode', 0x89), Format_reg_rm),
-    Conj(Equal('inst', 'mov'), Equal('opcode', 0x8b), Format_rm_reg),
-    Conj(Equal('inst', 'mov'), Equal('opcode', 0xc7),
+    Conj(Equal('inst', 'mov'), OpcodePair(0x88), Format_reg_rm),
+    Conj(Equal('inst', 'mov'), OpcodePair(0x8a), Format_rm_reg),
+    Conj(Equal('inst', 'mov'), OpcodePair(0xc6),
          Equal('modrm_opcode', 0), Format_imm_rm),
-    Conj(Equal('inst', 'mov'), Equal('opcode', 0xa1),
+    Conj(Equal('inst', 'mov'), OpcodePair(0xa0),
          DataOperationWithoutModRM,
          Equal('immediate_bytes', 4),
          GetAccArgRegname,
          Apply('args', Format, ['acc_regname'], 'VALUE32, %s')),
-    Conj(Equal('inst', 'mov'), Equal('opcode', 0xa3),
+    Conj(Equal('inst', 'mov'), OpcodePair(0xa2),
          DataOperationWithoutModRM,
          Equal('immediate_bytes', 4),
          GetAccArgRegname,
@@ -365,8 +405,9 @@ OneByteOpcodes = Disj(
     Conj(Equal('inst', 'mov'),
          ForRange('reg1', reg_count),
          GetArgRegname('reg1_name', 'reg1'),
-         Equal('opcode_top', 0xb8 >> 3),
-         Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
+         Equal('opcode_top', 0xb0 >> 4),
+         Apply('opcode', CatBits, ['opcode_top', 'not_byte_op', 'reg1'],
+               (4, 1, 3)),
          DataOperationWithoutModRM,
          DefaultImmediateSize,
          Apply('args', Format, ['immediate_desc', 'reg1_name'], '%s, %s')),
@@ -381,23 +422,24 @@ OneByteOpcodes = Disj(
          ForRange('reg', reg_count),
          GetArgRegname('reg_name', 'reg'),
          Apply('opcode', CatBits, ['opcode_top', 'reg'], (5, 3)),
+         Equal('not_byte_op', 1),
          DataOperationWithoutModRM,
          Equal('immediate_bytes', 0),
          EqualVar('args', 'reg_name')),
 
     Conj(Equal('inst', 'push'),
-         Equal('opcode', 0x68),
+         OpcodeLW(0x68),
          DataOperationWithoutModRM,
          DefaultImmediateSize,
          EqualVar('args', 'immediate_desc')),
     Conj(Equal('inst', 'push'),
-         Equal('opcode', 0x6a),
+         OpcodeLW(0x6a),
          DataOperationWithoutModRM,
          Equal('immediate_bytes', 1),
          Equal('args', '$VALUE8')),
 
-    Conj(Equal('inst', 'imul'), Equal('opcode', 0x69), Format_imm_rm_reg),
-    Conj(Equal('inst', 'imul'), Equal('opcode', 0x6b), Format_imm8_rm_reg),
+    Conj(Equal('inst', 'imul'), OpcodeLW(0x69), Format_imm_rm_reg),
+    Conj(Equal('inst', 'imul'), OpcodeLW(0x6b), Format_imm8_rm_reg),
 
     # Short (8-bit offset) jumps
     Conj(Equal('opcode_top', 0x70 >> 4),
@@ -408,17 +450,17 @@ OneByteOpcodes = Disj(
          Equal('args', 'JUMP_DEST'),
          Apply('inst', Format, ['cond_name'], 'j%s')),
 
-    Conj(Equal('inst', 'test'), Equal('opcode', 0x85), Format_reg_rm),
-    Conj(Equal('inst', 'xchg'), Equal('opcode', 0x87), Format_reg_rm),
+    Conj(Equal('inst', 'test'), OpcodePair(0x84), Format_reg_rm),
+    Conj(Equal('inst', 'xchg'), OpcodePair(0x86), Format_reg_rm),
     Conj(Equal('inst', 'lea'),
-         Equal('opcode', 0x8d),
+         OpcodeLW(0x8d),
          Format_rm_reg,
          # Disallow instructions of the form 'leal %reg, %reg'.
          # We require a modrm byte that looks like a memory access,
          # though the instruction does not perform a memory access.
          NotEqual('mod', 3)),
     Conj(Equal('inst', 'pop'),
-         Equal('opcode', 0x8f),
+         OpcodeLW(0x8f),
          Equal('modrm_opcode', 0),
          Format_rm),
 
@@ -440,6 +482,7 @@ OneByteOpcodes = Disj(
          GetAccArgRegname,
          Equal('opcode_top', 0x90 >> 3),
          Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
+         Equal('not_byte_op', 1),
          DataOperationWithoutModRM,
          Equal('immediate_bytes', 0),
          Apply('args', Format, ['acc_regname', 'reg1_name'], '%s, %s')),
@@ -497,7 +540,7 @@ OneByteOpcodes = Disj(
          Equal('has_inst_suffix', 0),
          Equal('immediate_bytes', 0)),
 
-    Conj(Equal('inst', 'test'), Equal('opcode', 0xa9), Format_imm_eax),
+    Conj(Equal('inst', 'test'), OpcodePair(0xa8), Format_imm_eax),
     )
 
 TwoByteOpcodes = Disj(
@@ -540,9 +583,10 @@ Encode = Conj(
     Instructions,
     Switch('has_inst_suffix',
            (0, Equal('inst_suffix', '')),
-           (1, Switch('has_data16_prefix',
-                      (0, Equal('inst_suffix', 'l')),
-                      (1, Equal('inst_suffix', 'w'))))),
+           (1, Mapping3('has_data16_prefix', 'not_byte_op', 'inst_suffix',
+                        [(0, 1, 'l'),
+                         (1, 1, 'w'),
+                         (0, 0, 'b')]))),
     Apply('desc', Format, ['inst', 'inst_suffix', 'args'], '%s%s %s'))
 
 
