@@ -69,8 +69,21 @@ regs32 = (
   '%esi',
   '%edi')
 
+regs16 = (
+  '%ax',
+  '%cx',
+  '%dx',
+  '%bx',
+  '%sp',
+  '%bp',
+  '%si',
+  '%di')
+
 def RegName(args):
   return regs32[args[0]]
+
+def Reg16Name(args):
+  return regs16[args[0]]
 
 def ScaleVal(args):
   return 1 << args[0]
@@ -135,10 +148,20 @@ SibEncoding = Conj(
     Apply('sib_byte', CatBits, ['scale', 'indexreg', 'basereg'], [2,3,3]),
     )
 
+def GetArgRegname(name_var, number_var):
+  return Switch('has_data16_prefix',
+                (0, Apply(name_var, RegName, [number_var])),
+                (1, Apply(name_var, Reg16Name, [number_var])))
+
+# For when %rax/%eax/%ax/%al is implicitly accessed.
+GetAccArgRegname = Conj(
+   Equal('acc_reg', 0),
+   GetArgRegname('acc_regname', 'acc_reg'))
+
 # rm argument is a register.
 ModRMRegister = Conj(
     ForRange('reg2', reg_count),
-    Apply('rm_arg', RegName, ['reg2']),
+    GetArgRegname('rm_arg', 'reg2'),
     Equal('mod', 3),
     Equal('has_sib_byte', 0),
     Equal('displacement_bytes', 0),
@@ -197,10 +220,11 @@ ModRMSib = Conj(
                         Apply('rm_arg', Format, ['sib_arg'], 'VALUE32%s')),
                    Conj(NotEqual('basereg', 5),
                         Equal('displacement_bytes', 0),
-                        Apply('rm_arg', Format, ['sib_arg'], '%s')))),
+                        EqualVar('rm_arg', 'sib_arg')))),
          ))
 ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
              Equal('has_modrm_byte', 1),
+             Equal('has_inst_suffix', 1),
              Disj(ModRMRegister,
                   ModRMAbsoluteAddr,
                   ModRMDisp,
@@ -209,7 +233,7 @@ ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
              )
 ModRMDoubleArg = Conj(Equal('has_modrm_opcode', 0),
                       ForRange('reg1', reg_count),
-                      Apply('reg1_name', RegName, ['reg1']),
+                      GetArgRegname('reg1_name', 'reg1'),
                       ModRM)
 ModRMSingleArg = Conj(Equal('has_modrm_opcode', 1),
                       EqualVar('reg1', 'modrm_opcode'),
@@ -220,6 +244,24 @@ NoModRM = Conj(
     Equal('has_modrm_opcode', 0),
     Equal('has_sib_byte', 0),
     Equal('displacement_bytes', 0))
+
+DataOperationWithoutModRM = Conj(
+    NoModRM,
+    Equal('has_inst_suffix', 1))
+
+# This is for jumps that do no data operation, so it does not make
+# sense to add a 'l' or 'w' suffix or use a data16 prefix.
+NoDataOperation = Conj(
+    NoModRM,
+    Equal('has_data16_prefix', 0),
+    Equal('has_inst_suffix', 0))
+
+DefaultImmediateSize = \
+    Switch('has_data16_prefix',
+           (0, Conj(Equal('immediate_bytes', 4),
+                    Equal('immediate_desc', '$VALUE32'))),
+           (1, Conj(Equal('immediate_bytes', 2),
+                    Equal('immediate_desc', '$VALUE16'))))
 
 Format_reg_rm = Conj(
     Equal('immediate_bytes', 0),
@@ -232,7 +274,8 @@ Format_rm_reg = Conj(
 Format_imm_rm = Conj(
     Equal('immediate_bytes', 4),
     ModRMSingleArg,
-    Apply('args', Format, ['rm_arg'], '$VALUE32, %s'))
+    DefaultImmediateSize,
+    Apply('args', Format, ['immediate_desc', 'rm_arg'], '%s, %s'))
 Format_imm8_rm = Conj(
     Equal('immediate_bytes', 1),
     ModRMSingleArg,
@@ -240,7 +283,9 @@ Format_imm8_rm = Conj(
 Format_imm_rm_reg = Conj(
     Equal('immediate_bytes', 4),
     ModRMDoubleArg,
-    Apply('args', Format, ['rm_arg', 'reg1_name'], '$VALUE32, %s, %s'))
+    DefaultImmediateSize,
+    Apply('args', Format, ['immediate_desc', 'rm_arg', 'reg1_name'],
+          '%s, %s, %s'))
 Format_imm8_rm_reg = Conj(
     Equal('immediate_bytes', 1),
     ModRMDoubleArg,
@@ -250,13 +295,10 @@ Format_rm = Conj(
     ModRMSingleArg,
     EqualVar('args', 'rm_arg'))
 Format_imm_eax = Conj(
-    NoModRM,
-    Equal('immediate_bytes', 4),
-    Equal('args', '$VALUE32, %eax'))
-NoArguments = Conj(
-    NoModRM,
-    Equal('immediate_bytes', 0),
-    Equal('args', ''))
+    DataOperationWithoutModRM,
+    DefaultImmediateSize,
+    GetAccArgRegname,
+    Apply('args', Format, ['immediate_desc', 'acc_regname'], '%s, %s'))
 
 # We use the condition names that objdump's disasembler produces here,
 # although the alias names are more uniform.
@@ -295,112 +337,144 @@ ArithOpcodes = Conj(
               Format_imm8_rm),
          ),
     Switch('arith_opcode',
-           (0, Equal('inst', 'addl')),
-           (1, Equal('inst', 'orl')),
-           (2, Equal('inst', 'adcl')),
-           (3, Equal('inst', 'sbbl')),
-           (4, Equal('inst', 'andl')),
-           (5, Equal('inst', 'subl')),
-           (6, Equal('inst', 'xorl')),
-           (7, Equal('inst', 'cmpl')),
+           (0, Equal('inst', 'add')),
+           (1, Equal('inst', 'or')),
+           (2, Equal('inst', 'adc')),
+           (3, Equal('inst', 'sbb')),
+           (4, Equal('inst', 'and')),
+           (5, Equal('inst', 'sub')),
+           (6, Equal('inst', 'xor')),
+           (7, Equal('inst', 'cmp')),
            ))
 
 OneByteOpcodes = Disj(
-    Conj(Equal('inst', 'movl'), Equal('opcode', 0x89), Format_reg_rm),
-    Conj(Equal('inst', 'movl'), Equal('opcode', 0x8b), Format_rm_reg),
-    Conj(Equal('inst', 'movl'), Equal('opcode', 0xc7),
+    Conj(Equal('inst', 'mov'), Equal('opcode', 0x89), Format_reg_rm),
+    Conj(Equal('inst', 'mov'), Equal('opcode', 0x8b), Format_rm_reg),
+    Conj(Equal('inst', 'mov'), Equal('opcode', 0xc7),
          Equal('modrm_opcode', 0), Format_imm_rm),
-    Conj(Equal('inst', 'movl'), Equal('opcode', 0xa1),
-         NoModRM,
+    Conj(Equal('inst', 'mov'), Equal('opcode', 0xa1),
+         DataOperationWithoutModRM,
          Equal('immediate_bytes', 4),
-         Equal('args', 'VALUE32, %eax')),
-    Conj(Equal('inst', 'movl'), Equal('opcode', 0xa3),
-         NoModRM,
+         GetAccArgRegname,
+         Apply('args', Format, ['acc_regname'], 'VALUE32, %s')),
+    Conj(Equal('inst', 'mov'), Equal('opcode', 0xa3),
+         DataOperationWithoutModRM,
          Equal('immediate_bytes', 4),
-         Equal('args', '%eax, VALUE32')),
-    Conj(Equal('inst', 'movl'),
+         GetAccArgRegname,
+         Apply('args', Format, ['acc_regname'], '%s, VALUE32')),
+    Conj(Equal('inst', 'mov'),
          ForRange('reg1', reg_count),
-         Apply('reg1_name', RegName, ['reg1']),
+         GetArgRegname('reg1_name', 'reg1'),
          Equal('opcode_top', 0xb8 >> 3),
          Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
-         NoModRM,
-         Equal('immediate_bytes', 4),
-         Apply('args', Format, ['reg1_name'], '$VALUE32, %s')),
+         DataOperationWithoutModRM,
+         DefaultImmediateSize,
+         Apply('args', Format, ['immediate_desc', 'reg1_name'], '%s, %s')),
 
     ArithOpcodes,
 
-    Conj(Disj(Conj(Equal('inst', 'incl'),  Equal('opcode_top', 0x40 >> 3)),
-              Conj(Equal('inst', 'decl'),  Equal('opcode_top', 0x48 >> 3)),
-              Conj(Equal('inst', 'pushl'), Equal('opcode_top', 0x50 >> 3)),
-              Conj(Equal('inst', 'popl'),  Equal('opcode_top', 0x58 >> 3)),
+    Conj(Disj(Conj(Equal('inst', 'inc'),  Equal('opcode_top', 0x40 >> 3)),
+              Conj(Equal('inst', 'dec'),  Equal('opcode_top', 0x48 >> 3)),
+              Conj(Equal('inst', 'push'), Equal('opcode_top', 0x50 >> 3)),
+              Conj(Equal('inst', 'pop'),  Equal('opcode_top', 0x58 >> 3)),
               ),
          ForRange('reg', reg_count),
-         Apply('reg_name', RegName, ['reg']),
+         GetArgRegname('reg_name', 'reg'),
          Apply('opcode', CatBits, ['opcode_top', 'reg'], (5, 3)),
-         NoModRM,
+         DataOperationWithoutModRM,
          Equal('immediate_bytes', 0),
          EqualVar('args', 'reg_name')),
 
-    Conj(Equal('inst', 'pushl'),
+    Conj(Equal('inst', 'push'),
          Equal('opcode', 0x68),
-         NoModRM,
-         Equal('immediate_bytes', 4),
-         Equal('args', '$VALUE32')),
-    Conj(Equal('inst', 'pushl'),
+         DataOperationWithoutModRM,
+         DefaultImmediateSize,
+         EqualVar('args', 'immediate_desc')),
+    Conj(Equal('inst', 'push'),
          Equal('opcode', 0x6a),
-         NoModRM,
+         DataOperationWithoutModRM,
          Equal('immediate_bytes', 1),
          Equal('args', '$VALUE8')),
 
-    Conj(Equal('inst', 'imull'), Equal('opcode', 0x69), Format_imm_rm_reg),
-    Conj(Equal('inst', 'imull'), Equal('opcode', 0x6b), Format_imm8_rm_reg),
+    Conj(Equal('inst', 'imul'), Equal('opcode', 0x69), Format_imm_rm_reg),
+    Conj(Equal('inst', 'imul'), Equal('opcode', 0x6b), Format_imm8_rm_reg),
 
     # Short (8-bit offset) jumps
     Conj(Equal('opcode_top', 0x70 >> 4),
          Apply('opcode', CatBits, ['opcode_top', 'cond'], [4, 4]),
          ConditionCodes,
-         NoModRM,
+         NoDataOperation,
          Equal('immediate_bytes', 1),
          Equal('args', 'JUMP_DEST'),
          Apply('inst', Format, ['cond_name'], 'j%s')),
 
-    Conj(Equal('inst', 'testl'), Equal('opcode', 0x85), Format_reg_rm),
-    Conj(Equal('inst', 'xchgl'), Equal('opcode', 0x87), Format_reg_rm),
-    Conj(Equal('inst', 'leal'),
+    Conj(Equal('inst', 'test'), Equal('opcode', 0x85), Format_reg_rm),
+    Conj(Equal('inst', 'xchg'), Equal('opcode', 0x87), Format_reg_rm),
+    Conj(Equal('inst', 'lea'),
          Equal('opcode', 0x8d),
          Format_rm_reg,
          # Disallow instructions of the form 'leal %reg, %reg'.
          # We require a modrm byte that looks like a memory access,
          # though the instruction does not perform a memory access.
          NotEqual('mod', 3)),
-    Conj(Equal('inst', 'popl'),
+    Conj(Equal('inst', 'pop'),
          Equal('opcode', 0x8f),
          Equal('modrm_opcode', 0),
          Format_rm),
 
-    Conj(Equal('inst', 'nop'), Equal('opcode', 0x90), NoArguments),
+    Conj(Equal('inst', 'nop'),
+         Equal('opcode', 0x90),
+         NoModRM,
+         Equal('has_inst_suffix', 0),
+         Equal('has_data16_prefix', 0),
+         Equal('immediate_bytes', 0),
+         Equal('args', '')),
     # 'xchg %eax, %reg'
-    Conj(Equal('inst', 'xchgl'),
+    Conj(Equal('inst', 'xchg'),
          ForRange('reg1', reg_count),
          # 'xchg %eax, %eax' (0x90) is disassembled as 'nop'.
          # On x86-64, it really is a no-op and does not clear the top
          # bits of %rax.
          NotEqual('reg1', 0), # %eax
-         Apply('reg1_name', RegName, ['reg1']),
+         GetArgRegname('reg1_name', 'reg1'),
+         GetAccArgRegname,
          Equal('opcode_top', 0x90 >> 3),
          Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
+         DataOperationWithoutModRM,
+         Equal('immediate_bytes', 0),
+         Apply('args', Format, ['acc_regname', 'reg1_name'], '%s, %s')),
+
+    Conj(Equal('opcode', 0x98),
+         Switch('has_data16_prefix',
+                # "Convert word to long".  'cwde' in Intel syntax.
+                # Sign-extends %ax into %eax.
+                (0, Equal('inst', 'cwtl')),
+                # "Convert byte to word".  'cbw' in Intel syntax.
+                # Sign-extends %al into %ax.
+                (1, Equal('inst', 'cbtw'))),
          NoModRM,
          Equal('immediate_bytes', 0),
-         Apply('args', Format, ['reg1_name'], '%%eax, %s')),
+         Equal('has_inst_suffix', 0), # We add a suffix locally.
+         Equal('args', '')),
+    Conj(Equal('opcode', 0x99),
+         Switch('has_data16_prefix',
+                # "Convert long to double long".  'cdq' in Intel syntax.
+                # Fills %edx with the top bit of %eax.
+                (0, Equal('inst', 'cltd')),
+                # "Convert word to double word".  'cwd' in Intel syntax.
+                # Fills %dx with the top bit of %ax.
+                (1, Equal('inst', 'cwtd'))),
+         NoModRM,
+         Equal('immediate_bytes', 0),
+         Equal('has_inst_suffix', 0), # We add a suffix locally.
+         Equal('args', '')),
 
-    # 'cwtl' is also known as 'cbw'/'cwde' in Intel syntax.
-    Conj(Equal('inst', 'cwtl'), Equal('opcode', 0x98), NoArguments),
-    # 'cltd' is also known as 'cwd'/'cdq' in Intel syntax.
-    Conj(Equal('inst', 'cltd'), Equal('opcode', 0x99), NoArguments),
-
+    # objdump adds a suffix to make this 'calll' though arguably this
+    # is superfluous.
     Conj(Equal('inst', 'calll'),
          Equal('opcode', 0xe8),
-         NoModRM,
+         NoDataOperation,
+         Equal('has_data16_prefix', 0),
          Equal('immediate_bytes', 4),
          Equal('args', 'JUMP_DEST')),
 
@@ -418,33 +492,39 @@ OneByteOpcodes = Disj(
                    ('scasl', 0xaf, '%es:(%edi), %eax'),
                    ]),
          NoModRM,
+         # TODO: Allow the data16 prefix here.
+         Equal('has_data16_prefix', 0),
+         Equal('has_inst_suffix', 0),
          Equal('immediate_bytes', 0)),
 
-    Conj(Equal('inst', 'testl'), Equal('opcode', 0xa9), Format_imm_eax),
+    Conj(Equal('inst', 'test'), Equal('opcode', 0xa9), Format_imm_eax),
     )
 
 TwoByteOpcodes = Disj(
+    # 4-byte offset jumps.
     Conj(Equal('opcode', 0x0f),
          Equal('opcode2_top', 0x80 >> 4),
          Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
          ConditionCodes,
-         NoModRM,
+         NoDataOperation,
+         Equal('has_data16_prefix', 0),
          Equal('immediate_bytes', 4),
          Equal('args', 'JUMP_DEST'),
          Apply('inst', Format, ['cond_name'], 'j%s')),
     )
 
+def OptPrependByte(cond, byte_value, dest_var, src_var):
+  return Switch(cond,
+                (1, Apply(dest_var, PrependByte, [byte_value, src_var])),
+                (0, EqualVar(dest_var, src_var)))
+
 ConcatBytes = Conj(
-    Apply('bytes', PrependByte, ['opcode', 'bytes1']),
-    Switch('has_opcode2',
-           (1, Apply('bytes1', PrependByte, ['opcode2', 'bytes2'])),
-           (0, EqualVar('bytes1', 'bytes2'))),
-    Switch('has_modrm_byte',
-           (1, Apply('bytes2', PrependByte, ['modrm_byte', 'bytes3'])),
-           (0, EqualVar('bytes2', 'bytes3'))),
-    Switch('has_sib_byte',
-           (1, Apply('bytes3', PrependByte, ['sib_byte', 'bytes4'])),
-           (0, EqualVar('bytes3', 'bytes4'))),
+    Equal('data16_byte', 0x66),
+    OptPrependByte('has_data16_prefix', 'data16_byte', 'bytes', 'bytes0'),
+    Apply('bytes0', PrependByte, ['opcode', 'bytes1']),
+    OptPrependByte('has_opcode2', 'opcode2', 'bytes1', 'bytes2'),
+    OptPrependByte('has_modrm_byte', 'modrm_byte', 'bytes2', 'bytes3'),
+    OptPrependByte('has_sib_byte', 'sib_byte', 'bytes3', 'bytes4'),
     Apply('bytes4', PrependWildcard, ['displacement_bytes', 'bytes5']),
     Apply('bytes5', PrependWildcard, ['immediate_bytes', 'bytes6']),
     Equal('bytes6', []))
@@ -458,7 +538,12 @@ Instructions = Disj(
 
 Encode = Conj(
     Instructions,
-    Apply('desc', Format, ['inst', 'args'], '%s %s'))
+    Switch('has_inst_suffix',
+           (0, Equal('inst_suffix', '')),
+           (1, Switch('has_data16_prefix',
+                      (0, Equal('inst_suffix', 'l')),
+                      (1, Equal('inst_suffix', 'w'))))),
+    Apply('desc', Format, ['inst', 'inst_suffix', 'args'], '%s%s %s'))
 
 
 # Test decoding an instruction.
@@ -502,25 +587,26 @@ GenerateAll(OneOfEachType,
                 '%s:%s\n' % (' '.join(info['bytes']), info['desc'])))
 TestObjdump(OneOfEachType)
 
+# These counts are multiplied by 2 for the movl/movw variants.
 # Check all modrm/sib byte values.
 movs = TestObjdump(Conj(Equal('opcode', 0x89), Equal('sib_byte', 0), Encode))
-assert_eq(len(movs), 256)
+assert_eq(len(movs), 2 * 256)
 movs = TestObjdump(Conj(Equal('opcode', 0x89), Equal('modrm_byte', 4), Encode))
-assert_eq(len(movs), 256)
+assert_eq(len(movs), 2 * 256)
 movs = TestObjdump(Conj(Equal('opcode', 0x89), Encode))
 # There are 6376 combinations of modrm/sib bytes.
 # There are 3*8 = 24 modrm bytes that indicate a sib byte follows.
 # There are 256 - 24 = 232 modrm bytes without sib bytes.
 # There are 256 * 24 = 6144 combinations of modrm bytes and sib bytes.
-assert_eq(len(movs), 232 + 6144)
+assert_eq(len(movs), 2 * (232 + 6144))
 
 # 'lea' is special since it uses modrm but does not access memory.
 # This means 'leal %eax, %eax' is not valid.  Check that we exclude it.
 # We do not exclude redundant forms such as 'leal (%ebx), %eax'
 # (which is equivalent to 'movl %ebx, %eax').
-leas = TestObjdump(Conj(Equal('inst', 'leal'), Encode))
+leas = TestObjdump(Conj(Equal('inst', 'lea'), Encode))
 # Subtract the number of modrm byte values that are excluded.
-assert_eq(len(leas), 6376 - 64)
+assert_eq(len(leas), 2 * (6376 - 64))
 
 # Test all instructions.  This is slower.
 TestObjdump(Encode)
