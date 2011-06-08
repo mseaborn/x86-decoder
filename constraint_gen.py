@@ -185,6 +185,7 @@ ModRMRegister = Conj(
     Equal('mod', 3),
     Equal('has_sib_byte', 0),
     Equal('displacement_bytes', 0),
+    Equal('has_gs_prefix', 0),
     )
 # rm argument is an absolute address with no base/index reg.
 ModRMAbsoluteAddr = Conj(
@@ -192,7 +193,7 @@ ModRMAbsoluteAddr = Conj(
     Equal('reg2', 5),
     Equal('has_sib_byte', 0),
     Equal('displacement_bytes', 4),
-    Equal('rm_arg', 'VALUE32'),
+    Equal('mem_arg', 'VALUE32'),
     )
 # rm argument is of the form DISP(%reg).
 ModRMDisp = Conj(
@@ -204,15 +205,15 @@ ModRMDisp = Conj(
     Equal('has_sib_byte', 0),
     Disj(Conj(Equal('mod', 2),
               Equal('displacement_bytes', 4),
-              Apply('rm_arg', Format, ['indexreg_name'], 'VALUE32(%s)'),
+              Apply('mem_arg', Format, ['indexreg_name'], 'VALUE32(%s)'),
               ),
          Conj(Equal('mod', 1),
               Equal('displacement_bytes', 1),
-              Apply('rm_arg', Format, ['indexreg_name'], 'VALUE8(%s)'),
+              Apply('mem_arg', Format, ['indexreg_name'], 'VALUE8(%s)'),
               ),
          Conj(Equal('mod', 0),
               Equal('displacement_bytes', 0),
-              Apply('rm_arg', Format, ['indexreg_name'], '(%s)'),
+              Apply('mem_arg', Format, ['indexreg_name'], '(%s)'),
               # %ebp (register 5) is not accepted in this position,
               # because this encoding is used for ModRMAbsoluteAddr.
               # Using %ebp as a base register requires encoding it
@@ -227,29 +228,33 @@ ModRMSib = Conj(
     SibEncoding,
     Disj(Conj(Equal('mod', 2),
               Equal('displacement_bytes', 4),
-              Apply('rm_arg', Format, ['sib_arg'], 'VALUE32%s'),
+              Apply('mem_arg', Format, ['sib_arg'], 'VALUE32%s'),
               ),
          Conj(Equal('mod', 1),
               Equal('displacement_bytes', 1),
-              Apply('rm_arg', Format, ['sib_arg'], 'VALUE8%s'),
+              Apply('mem_arg', Format, ['sib_arg'], 'VALUE8%s'),
               ),
          Conj(Equal('mod', 0),
               # %ebp (register 5) is treated specially.
               Disj(Conj(Equal('basereg', 5),
                         Equal('displacement_bytes', 4),
-                        Apply('rm_arg', Format, ['sib_arg'], 'VALUE32%s')),
+                        Apply('mem_arg', Format, ['sib_arg'], 'VALUE32%s')),
                    Conj(NotEqual('basereg', 5),
                         Equal('displacement_bytes', 0),
-                        EqualVar('rm_arg', 'sib_arg')))),
+                        EqualVar('mem_arg', 'sib_arg')))),
          ))
 ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
              Equal('has_modrm_byte', 1),
              Disj(ModRMRegister,
-                  ModRMAbsoluteAddr,
-                  ModRMDisp,
-                  ModRMSib,
-                  ),
-             )
+                  # These cases all perform memory accesses, so we may
+                  # need to add a '%gs:' prefix.
+                  Conj(Disj(ModRMAbsoluteAddr,
+                            ModRMDisp,
+                            ModRMSib),
+                       Switch('has_gs_prefix',
+                              (0, EqualVar('rm_arg', 'mem_arg')),
+                              (1, Apply('rm_arg', Format, ['mem_arg'],
+                                        '%%gs:%s'))))))
 ModRMDoubleArg = Conj(Equal('has_modrm_opcode', 0),
                       ForRange('reg1', reg_count),
                       GetArgRegname('reg1_name', 'reg1'),
@@ -269,7 +274,8 @@ NoModRM = Conj(
     Equal('has_modrm_byte', 0),
     Equal('has_modrm_opcode', 0),
     Equal('has_sib_byte', 0),
-    Equal('displacement_bytes', 0))
+    Equal('displacement_bytes', 0),
+    Equal('has_gs_prefix', 0))
 
 DataOperationWithoutModRM = Conj(
     NoModRM,
@@ -804,15 +810,17 @@ def OptPrependByte(cond, byte_value, dest_var, src_var):
                 (0, EqualVar(dest_var, src_var)))
 
 ConcatBytes = Conj(
+    Equal('gs_prefix_byte', 0x65),
     Equal('data16_byte', 0x66),
-    OptPrependByte('has_data16_prefix', 'data16_byte', 'bytes', 'bytes0'),
-    Apply('bytes0', PrependByte, ['opcode', 'bytes1']),
-    OptPrependByte('has_opcode2', 'opcode2', 'bytes1', 'bytes2'),
-    OptPrependByte('has_modrm_byte', 'modrm_byte', 'bytes2', 'bytes3'),
-    OptPrependByte('has_sib_byte', 'sib_byte', 'bytes3', 'bytes4'),
-    Apply('bytes4', PrependWildcard, ['displacement_bytes', 'bytes5']),
-    Apply('bytes5', PrependWildcard, ['immediate_bytes', 'bytes6']),
-    Equal('bytes6', []))
+    OptPrependByte('has_gs_prefix', 'gs_prefix_byte', 'bytes', 'bytes1'),
+    OptPrependByte('has_data16_prefix', 'data16_byte', 'bytes1', 'bytes2'),
+    Apply('bytes2', PrependByte, ['opcode', 'bytes3']),
+    OptPrependByte('has_opcode2', 'opcode2', 'bytes3', 'bytes4'),
+    OptPrependByte('has_modrm_byte', 'modrm_byte', 'bytes4', 'bytes5'),
+    OptPrependByte('has_sib_byte', 'sib_byte', 'bytes5', 'bytes6'),
+    Apply('bytes6', PrependWildcard, ['displacement_bytes', 'bytes7']),
+    Apply('bytes7', PrependWildcard, ['immediate_bytes', 'bytes8']),
+    Equal('bytes8', []))
 
 # We call ConcatBytes after setting has_opcode2 to reduce the
 # expanding-out of combinations that ConcatBytes does.
@@ -876,11 +884,13 @@ TestObjdump(OneOfEachType)
 
 # These counts are multiplied by 2 for the movl/movw variants.
 # Check all modrm/sib byte values.
-movs = TestObjdump(Conj(Equal('opcode', 0x89), Equal('sib_byte', 0), Encode))
+SimpleMov = Conj(Equal('opcode', 0x89),
+                 Equal('has_gs_prefix', 0))
+movs = TestObjdump(Conj(SimpleMov, Equal('sib_byte', 0), Encode))
 assert_eq(len(movs), 2 * 256)
-movs = TestObjdump(Conj(Equal('opcode', 0x89), Equal('modrm_byte', 4), Encode))
+movs = TestObjdump(Conj(SimpleMov, Equal('modrm_byte', 4), Encode))
 assert_eq(len(movs), 2 * 256)
-movs = TestObjdump(Conj(Equal('opcode', 0x89), Encode))
+movs = TestObjdump(Conj(SimpleMov, Encode))
 # There are 6376 combinations of modrm/sib bytes.
 # There are 3*8 = 24 modrm bytes that indicate a sib byte follows.
 # There are 256 - 24 = 232 modrm bytes without sib bytes.
@@ -891,7 +901,9 @@ assert_eq(len(movs), 2 * (232 + 6144))
 # This means 'leal %eax, %eax' is not valid.  Check that we exclude it.
 # We do not exclude redundant forms such as 'leal (%ebx), %eax'
 # (which is equivalent to 'movl %ebx, %eax').
-leas = TestObjdump(Conj(Equal('inst', 'lea'), Encode))
+leas = TestObjdump(Conj(Equal('inst', 'lea'),
+                        Equal('has_gs_prefix', 0),
+                        Encode))
 # Subtract the number of modrm byte values that are excluded.
 assert_eq(len(leas), 2 * (6376 - 64))
 
