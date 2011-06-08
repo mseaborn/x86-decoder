@@ -260,6 +260,11 @@ ModRMSingleArg = Conj(Equal('has_modrm_opcode', 1),
                       Equal('has_inst_suffix', 1),
                       ModRM)
 
+# 'lea' uses a modrm byte but does not perform a memory access.  Other
+# instructions ('ljmp', 'cmpxchg8b') perform non-standard-size memory
+# accesses, so do not accept a register in the modrm byte.
+ModRMMemoryOnly = NotEqual('mod', 3)
+
 NoModRM = Conj(
     Equal('has_modrm_byte', 0),
     Equal('has_modrm_opcode', 0),
@@ -494,7 +499,7 @@ OneByteOpcodes = Disj(
          # Disallow instructions of the form 'leal %reg, %reg'.
          # We require a modrm byte that looks like a memory access,
          # though the instruction does not perform a memory access.
-         NotEqual('mod', 3)),
+         ModRMMemoryOnly),
     Conj(Equal('inst', 'pop'),
          OpcodeLW(0x8f),
          Equal('modrm_opcode', 0),
@@ -666,8 +671,8 @@ OneByteOpcodes = Disj(
                   ('call', 2, 1),
                   # Leave out lcall/ljmp for now because 'ljmp *%eax'
                   # is not a valid instruction (ljmp reads multiple
-                  # words from memory) and we would need to add an
-                  # additional constraint, similar to 'lea'.
+                  # words from memory) and we would need to add
+                  # ModRMMemoryOnly.
                   #('lcall', 3, 1),
                   ('jmp', 4, 1),
                   #('ljmp', 5, 1),
@@ -682,6 +687,14 @@ OneByteOpcodes = Disj(
     )
 
 TwoByteOpcodes = Disj(
+    # Conditional move.  Added in P6.
+    Conj(Equal('opcode2_top', 0x40 >> 4),
+         Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
+         ConditionCodes,
+         Equal('not_byte_op', 1),
+         Format_rm_reg,
+         Apply('inst', Format, ['cond_name'], 'cmov%s')),
+
     # 4-byte offset jumps.
     Conj(Equal('opcode2_top', 0x80 >> 4),
          Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
@@ -755,6 +768,34 @@ TwoByteOpcodes = Disj(
          Equal('inst', 'bsr'),
          Equal('not_byte_op', 1),
          Format_rm_reg),
+
+    # Added in the 486.
+    Conj(Mapping('opcode2', 'not_byte_op',
+                 [(0xb0, 0),
+                  (0xb1, 1)]),
+         Equal('inst', 'cmpxchg'),
+         Format_reg_rm),
+    Conj(Mapping('opcode2', 'not_byte_op',
+                 [(0xc0, 0),
+                  (0xc1, 1)]),
+         Equal('inst', 'xadd'),
+         Format_reg_rm),
+    Conj(Equal('opcode2', 0xc7),
+         Equal('inst', 'cmpxchg8b'),
+         Equal('modrm_opcode', 1),
+         Equal('has_data16_prefix', 0),
+         # We are inlining Format_rm here in order to avoid setting
+         # has_inst_suffix=1, since the suffix is the irregular '8b'.
+         # This is a pain.
+         # From Format_rm:
+         Equal('immediate_bytes', 0),
+         EqualVar('args', 'rm_arg'),
+         # From ModRMSingleArg:
+         Equal('has_modrm_opcode', 1),
+         EqualVar('reg1', 'modrm_opcode'),
+         Equal('has_inst_suffix', 0),
+         ModRM,
+         ModRMMemoryOnly),
     )
 
 def OptPrependByte(cond, byte_value, dest_var, src_var):
