@@ -244,7 +244,6 @@ ModRMSib = Conj(
          ))
 ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
              Equal('has_modrm_byte', 1),
-             Equal('has_inst_suffix', 1),
              Disj(ModRMRegister,
                   ModRMAbsoluteAddr,
                   ModRMDisp,
@@ -254,9 +253,11 @@ ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
 ModRMDoubleArg = Conj(Equal('has_modrm_opcode', 0),
                       ForRange('reg1', reg_count),
                       GetArgRegname('reg1_name', 'reg1'),
+                      Equal('has_inst_suffix', 1),
                       ModRM)
 ModRMSingleArg = Conj(Equal('has_modrm_opcode', 1),
                       EqualVar('reg1', 'modrm_opcode'),
+                      Equal('has_inst_suffix', 1),
                       ModRM)
 
 NoModRM = Conj(
@@ -295,7 +296,6 @@ Format_rm_reg = Conj(
     ModRMDoubleArg,
     Apply('args', Format, ['rm_arg', 'reg1_name'], '%s, %s'))
 Format_imm_rm = Conj(
-    Equal('immediate_bytes', 4),
     ModRMSingleArg,
     DefaultImmediateSize,
     Apply('args', Format, ['immediate_desc', 'rm_arg'], '%s, %s'))
@@ -304,7 +304,6 @@ Format_imm8_rm = Conj(
     ModRMSingleArg,
     Apply('args', Format, ['rm_arg'], '$VALUE8, %s'))
 Format_imm_rm_reg = Conj(
-    Equal('immediate_bytes', 4),
     ModRMDoubleArg,
     DefaultImmediateSize,
     Apply('args', Format, ['immediate_desc', 'rm_arg', 'reg1_name'],
@@ -313,6 +312,14 @@ Format_imm8_rm_reg = Conj(
     Equal('immediate_bytes', 1),
     ModRMDoubleArg,
     Apply('args', Format, ['rm_arg', 'reg1_name'], '$VALUE8, %s, %s'))
+Format_imm8_reg_rm = Conj(
+    Equal('immediate_bytes', 1),
+    ModRMDoubleArg,
+    Apply('args', Format, ['reg1_name', 'rm_arg'], '$VALUE8, %s, %s'))
+Format_cl_reg_rm = Conj(
+    Equal('immediate_bytes', 0),
+    ModRMDoubleArg,
+    Apply('args', Format, ['reg1_name', 'rm_arg'], '%%cl, %s, %s'))
 Format_rm = Conj(
     Equal('immediate_bytes', 0),
     ModRMSingleArg,
@@ -392,6 +399,29 @@ ArithOpcodes = Conj(
            (7, Equal('inst', 'cmp')),
            ))
 
+# Group 2
+ShiftOpcodes = Conj(
+    Disj(Conj(OpcodePair(0xc0), Format_imm8_rm),
+         Conj(OpcodePair(0xd0),
+              Equal('immediate_bytes', 0),
+              ModRMSingleArg,
+              # 'rol $1, ARG' should be equivalent to 'rol ARG'.
+              EqualVar('args', 'rm_arg')),
+         Conj(OpcodePair(0xd2),
+              Equal('immediate_bytes', 0),
+              ModRMSingleArg,
+              Apply('args', Format, ['rm_arg'], '%%cl, %s'))),
+    Mapping('inst', 'modrm_opcode',
+            [('rol', 0),
+             ('ror', 1),
+             ('rcl', 2),
+             ('rcr', 3),
+             ('shl', 4),
+             ('shr', 5),
+             # 6 is absent.
+             ('sar', 7),
+             ]))
+
 OneByteOpcodes = Disj(
     Conj(Equal('inst', 'mov'), OpcodePair(0x88), Format_reg_rm),
     Conj(Equal('inst', 'mov'), OpcodePair(0x8a), Format_rm_reg),
@@ -418,6 +448,7 @@ OneByteOpcodes = Disj(
          Apply('args', Format, ['immediate_desc', 'reg1_name'], '%s, %s')),
 
     ArithOpcodes,
+    ShiftOpcodes,
 
     Conj(Disj(Conj(Equal('inst', 'inc'),  Equal('opcode_top', 0x40 >> 3)),
               Conj(Equal('inst', 'dec'),  Equal('opcode_top', 0x48 >> 3)),
@@ -529,7 +560,6 @@ OneByteOpcodes = Disj(
     Conj(Equal('inst', 'calll'),
          Equal('opcode', 0xe8),
          NoDataOperation,
-         Equal('has_data16_prefix', 0),
          Equal('immediate_bytes', 4),
          Equal('args', 'JUMP_DEST')),
 
@@ -606,6 +636,21 @@ OneByteOpcodes = Disj(
          Equal('immediate_bytes', 0),
          Equal('args', '')),
 
+    # Group 3
+    Conj(OpcodePair(0xf6),
+         Disj(Conj(Equal('inst', 'test'),
+                   Equal('modrm_opcode', 0),
+                   Format_imm_rm),
+              # modrm_opcode=1 is not used.
+              # Unary operations:
+              Conj(Format_rm,
+                   Mapping('inst', 'modrm_opcode',
+                           [('not', 2),
+                            ('neg', 3),
+                            ('mul', 4),
+                            ('imul', 5),
+                            ('div', 6),
+                            ('idiv', 7)])))),
     # Group 4
     Conj(Equal('opcode', 0xfe),
          Mapping('inst', 'modrm_opcode',
@@ -638,15 +683,78 @@ OneByteOpcodes = Disj(
 
 TwoByteOpcodes = Disj(
     # 4-byte offset jumps.
-    Conj(Equal('opcode', 0x0f),
-         Equal('opcode2_top', 0x80 >> 4),
+    Conj(Equal('opcode2_top', 0x80 >> 4),
          Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
          ConditionCodes,
          NoDataOperation,
-         Equal('has_data16_prefix', 0),
          Equal('immediate_bytes', 4),
          Equal('args', 'JUMP_DEST'),
          Apply('inst', Format, ['cond_name'], 'j%s')),
+
+    # Byte set on condition
+    Conj(Equal('opcode2_top', 0x90 >> 4),
+         Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
+         ConditionCodes,
+         Equal('modrm_opcode', 0),
+         Equal('not_byte_op', 0),
+         Equal('has_data16_prefix', 0),
+         Apply('inst', Format, ['cond_name'], 'set%s'),
+         # We are inlining Format_rm here in order to avoid setting
+         # has_inst_suffix=1, in order to match objdump's output which
+         # does not include a 'b' suffix.  This is a pain.
+         # From Format_rm:
+         Equal('immediate_bytes', 0),
+         EqualVar('args', 'rm_arg'),
+         # From ModRMSingleArg:
+         Equal('has_modrm_opcode', 1),
+         EqualVar('reg1', 'modrm_opcode'),
+         Equal('has_inst_suffix', 0),
+         ModRM),
+
+    # Bit test/set/clear operations
+    Conj(Mapping('inst', 'opcode2',
+                 [('bt', 0xa3),
+                  ('bts', 0xab),
+                  ('btr', 0xb3),
+                  ('btc', 0xbb)]),
+         Equal('not_byte_op', 1),
+         Format_reg_rm),
+    # Group 8
+    Conj(Equal('opcode2', 0xba),
+         Equal('not_byte_op', 1),
+         Mapping('inst', 'modrm_opcode',
+                 [('bt', 4),
+                  ('bts', 5),
+                  ('btr', 6),
+                  ('btc', 7)]),
+         Format_imm8_rm),
+
+    # Bit shift left/right
+    Conj(Mapping('inst', 'opcode2',
+                 [('shld', 0xa4),
+                  ('shrd', 0xac)]),
+         Equal('not_byte_op', 1),
+         Format_imm8_reg_rm),
+    Conj(Mapping('inst', 'opcode2',
+                 [('shld', 0xa5),
+                  ('shrd', 0xad)]),
+         Equal('not_byte_op', 1),
+         Format_cl_reg_rm),
+
+    Conj(Equal('opcode2', 0xaf),
+         Equal('inst', 'imul'),
+         Equal('not_byte_op', 1),
+         Format_rm_reg),
+
+    # Bit scan forwards/reverse
+    Conj(Equal('opcode2', 0xbc),
+         Equal('inst', 'bsf'),
+         Equal('not_byte_op', 1),
+         Format_rm_reg),
+    Conj(Equal('opcode2', 0xbd),
+         Equal('inst', 'bsr'),
+         Equal('not_byte_op', 1),
+         Format_rm_reg),
     )
 
 def OptPrependByte(cond, byte_value, dest_var, src_var):
@@ -669,7 +777,8 @@ ConcatBytes = Conj(
 # expanding-out of combinations that ConcatBytes does.
 Instructions = Disj(
     Conj(Equal('has_opcode2', 0), ConcatBytes, OneByteOpcodes),
-    Conj(Equal('has_opcode2', 1), ConcatBytes, TwoByteOpcodes),
+    Conj(Equal('has_opcode2', 1), ConcatBytes, Equal('opcode', 0x0f),
+         TwoByteOpcodes),
     )
 
 Encode = Conj(
