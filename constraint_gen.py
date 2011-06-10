@@ -847,11 +847,13 @@ def TestInstruction(bytes, desc):
   assert_eq([info['desc'] for info in decoded],
             [desc])
 
-TestInstruction('90', 'nop ')
-TestInstruction('89 04 f4', 'movl %eax, (%esp, %esi, 8)')
-# This used to generate the output twice because of an awkward
-# negation construct.
-TestInstruction('89 04 60', 'movl %eax, (%eax, %eiz, 2)')
+
+def TestDecoding():
+  TestInstruction('90', 'nop ')
+  TestInstruction('89 04 f4', 'movl %eax, (%esp, %esi, 8)')
+  # This used to generate the output twice because of an awkward
+  # negation construct.
+  TestInstruction('89 04 60', 'movl %eax, (%eax, %eiz, 2)')
 
 
 def TestObjdump(clause):
@@ -866,6 +868,7 @@ def TestObjdump(clause):
   assert_eq(len(instrs), len(set(instrs)))
   return instrs
 
+
 # Generate one example of each type of instruction.
 # We do this by preventing all values of modrm_byte from being enumerated.
 OneOfEachType = Disj(
@@ -877,35 +880,52 @@ OneOfEachType = Disj(
          Equal('reg2', 0),
          Encode))
 
-GenerateAll(OneOfEachType,
-            lambda info: sys.stdout.write(
-                '%s:%s\n' % (' '.join(info['bytes']), info['desc'])))
-TestObjdump(OneOfEachType)
 
-# These counts are multiplied by 2 for the movl/movw variants.
-# Check all modrm/sib byte values.
-SimpleMov = Conj(Equal('opcode', 0x89),
-                 Equal('has_gs_prefix', 0))
-movs = TestObjdump(Conj(SimpleMov, Equal('sib_byte', 0), Encode))
-assert_eq(len(movs), 2 * 256)
-movs = TestObjdump(Conj(SimpleMov, Equal('modrm_byte', 4), Encode))
-assert_eq(len(movs), 2 * 256)
-movs = TestObjdump(Conj(SimpleMov, Encode))
-# There are 6376 combinations of modrm/sib bytes.
-# There are 3*8 = 24 modrm bytes that indicate a sib byte follows.
-# There are 256 - 24 = 232 modrm bytes without sib bytes.
-# There are 256 * 24 = 6144 combinations of modrm bytes and sib bytes.
-assert_eq(len(movs), 2 * (232 + 6144))
+def TestQuick():
+  GenerateAll(OneOfEachType,
+              lambda info: sys.stdout.write(
+                  '%s:%s\n' % (' '.join(info['bytes']), info['desc'])))
+  TestObjdump(OneOfEachType)
 
-# 'lea' is special since it uses modrm but does not access memory.
-# This means 'leal %eax, %eax' is not valid.  Check that we exclude it.
-# We do not exclude redundant forms such as 'leal (%ebx), %eax'
-# (which is equivalent to 'movl %ebx, %eax').
-leas = TestObjdump(Conj(Equal('inst', 'lea'),
-                        Equal('has_gs_prefix', 0),
-                        Encode))
-# Subtract the number of modrm byte values that are excluded.
-assert_eq(len(leas), 2 * (6376 - 64))
 
-# Test all instructions.  This is slower.
-TestObjdump(Encode)
+def TestMedium():
+  # These counts are multiplied by 2 for the movl/movw variants.
+  # Check all modrm/sib byte values.
+  SimpleMov = Conj(Equal('opcode', 0x89),
+                   Equal('has_gs_prefix', 0))
+  movs = TestObjdump(Conj(SimpleMov, Equal('sib_byte', 0), Encode))
+  assert_eq(len(movs), 2 * 256)
+  movs = TestObjdump(Conj(SimpleMov, Equal('modrm_byte', 4), Encode))
+  assert_eq(len(movs), 2 * 256)
+  movs = TestObjdump(Conj(SimpleMov, Encode))
+  # There are 6376 combinations of modrm/sib bytes.
+  # There are 3*8 = 24 modrm bytes that indicate a sib byte follows.
+  # There are 256 - 24 = 232 modrm bytes without sib bytes.
+  # There are 256 * 24 = 6144 combinations of modrm bytes and sib bytes.
+  assert_eq(len(movs), 2 * (232 + 6144))
+
+  # 'lea' is special since it uses modrm but does not access memory.
+  # This means 'leal %eax, %eax' is not valid.  Check that we exclude it.
+  # We do not exclude redundant forms such as 'leal (%ebx), %eax'
+  # (which is equivalent to 'movl %ebx, %eax').
+  leas = TestObjdump(Conj(Equal('inst', 'lea'),
+                          Equal('has_gs_prefix', 0),
+                          Encode))
+  # Subtract the number of modrm byte values that are excluded.
+  assert_eq(len(leas), 2 * (6376 - 64))
+
+
+def TestSlow():
+  # Test all instructions.  This is slower.
+  TestObjdump(Encode)
+
+
+def Main():
+  TestDecoding()
+  TestQuick()
+  TestMedium()
+  TestSlow()
+
+
+if __name__ == '__main__':
+  Main()
