@@ -12,19 +12,26 @@ def MapWildcard(byte):
     return byte
 
 
-def DisassembleTest(get_instructions, bits):
-  fh = open('tmp.S', 'w')
-  count = 0
-  for bytes, desc in get_instructions():
-    asm = '.ascii "%s" /* %s */\n' % (
-      ''.join('\\x' + MapWildcard(byte) for byte in bytes), desc)
-    fh.write(asm)
-    count += 1
-  fh.close()
-  print 'Checking %i instructions...' % count
+def DisassembleTestCallback(get_instructions, bits):
+  asm_fh = open('tmp.S', 'w')
+  list_fh = open('tmp.list', 'w')
+  count = [0]
+
+  def Callback(bytes, desc):
+    escaped_bytes = ''.join('\\x' + MapWildcard(byte) for byte in bytes)
+    asm_fh.write('.ascii "%s"\n' % escaped_bytes)
+    list_fh.write('%s:%s\n' % (' '.join(bytes), desc))
+    count[0] += 1
+
+  get_instructions(Callback)
+  asm_fh.close()
+  list_fh.close()
+  print 'Checking %i instructions...' % count[0]
   subprocess.check_call(['gcc', '-c', '-m%i' % bits, 'tmp.S', '-o', 'tmp.o'])
   seq = objdump.Decode('tmp.o')
-  for index, (bytes, desc) in enumerate(get_instructions()):
+  for index, line in enumerate(open('tmp.list')):
+    bytes, desc = line.rstrip('\n').split(':', 1)
+    bytes = bytes.split(' ')
     bytes2, disasm_orig = seq.next()
     if len(bytes) != len(bytes2):
       print 'Length mismatch (%i): %r %r versus %r %r' % (
@@ -55,3 +62,10 @@ def DisassembleTest(get_instructions, bits):
     if desc != disasm:
       print 'Mismatch (%i): %r != %r (%r) (%s)' % (
         index, desc, disasm, disasm_orig, ' '.join(bytes))
+
+
+def DisassembleTest(get_instructions, bits):
+  def Func(callback):
+    for bytes, desc in get_instructions():
+      callback(bytes, desc)
+  DisassembleTestCallback(Func, bits)

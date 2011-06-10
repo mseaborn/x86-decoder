@@ -858,15 +858,22 @@ def TestDecoding():
 
 def TestObjdump(clause):
   bits = 32
-  instrs = []
-  GenerateAll(clause,
-              lambda info: instrs.append((info['bytes'], info['desc'])))
-  objdump_check.DisassembleTest(lambda: instrs, bits)
+  instrs = set()
+  dups = []
+
+  def Generate(callback):
+    def OnResult(info):
+      bytes = ''.join(info['bytes'])
+      if bytes in instrs:
+        dups.append(bytes)
+      instrs.add(bytes)
+      callback(info['bytes'], info['desc'])
+    GenerateAll(clause, OnResult)
+  objdump_check.DisassembleTestCallback(Generate, bits)
 
   # Check that there are no duplicates.
-  instrs = [(' '.join(bytes), desc) for bytes, desc in instrs]
-  assert_eq(len(instrs), len(set(instrs)))
-  return instrs
+  assert_eq(dups, [])
+  return len(instrs)
 
 
 # Generate one example of each type of instruction.
@@ -893,26 +900,26 @@ def TestMedium():
   # Check all modrm/sib byte values.
   SimpleMov = Conj(Equal('opcode', 0x89),
                    Equal('has_gs_prefix', 0))
-  movs = TestObjdump(Conj(SimpleMov, Equal('sib_byte', 0), Encode))
-  assert_eq(len(movs), 2 * 256)
-  movs = TestObjdump(Conj(SimpleMov, Equal('modrm_byte', 4), Encode))
-  assert_eq(len(movs), 2 * 256)
-  movs = TestObjdump(Conj(SimpleMov, Encode))
+  mov_count = TestObjdump(Conj(SimpleMov, Equal('sib_byte', 0), Encode))
+  assert_eq(mov_count, 2 * 256)
+  mov_count = TestObjdump(Conj(SimpleMov, Equal('modrm_byte', 4), Encode))
+  assert_eq(mov_count, 2 * 256)
+  mov_count = TestObjdump(Conj(SimpleMov, Encode))
   # There are 6376 combinations of modrm/sib bytes.
   # There are 3*8 = 24 modrm bytes that indicate a sib byte follows.
   # There are 256 - 24 = 232 modrm bytes without sib bytes.
   # There are 256 * 24 = 6144 combinations of modrm bytes and sib bytes.
-  assert_eq(len(movs), 2 * (232 + 6144))
+  assert_eq(mov_count, 2 * (232 + 6144))
 
   # 'lea' is special since it uses modrm but does not access memory.
   # This means 'leal %eax, %eax' is not valid.  Check that we exclude it.
   # We do not exclude redundant forms such as 'leal (%ebx), %eax'
   # (which is equivalent to 'movl %ebx, %eax').
-  leas = TestObjdump(Conj(Equal('inst', 'lea'),
-                          Equal('has_gs_prefix', 0),
-                          Encode))
+  lea_count = TestObjdump(Conj(Equal('inst', 'lea'),
+                               Equal('has_gs_prefix', 0),
+                               Encode))
   # Subtract the number of modrm byte values that are excluded.
-  assert_eq(len(leas), 2 * (6376 - 64))
+  assert_eq(lea_count, 2 * (6376 - 64))
 
 
 def TestSlow():
