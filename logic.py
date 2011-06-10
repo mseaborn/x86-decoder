@@ -110,6 +110,27 @@ def Apply(dest_var, func, arg_vars, *args):
       cont()
   return Func
 
+def InSet(var, values):
+  as_set = set(values)
+  def Func(ctx, cont):
+    if var in ctx.vars:
+      # Fast path.
+      if ctx.vars[var] in as_set:
+        cont()
+    else:
+      for x in values:
+        restore = ctx.Choice()
+        ctx.Set(var, x, cont)
+        restore()
+  return Func
+
+def NotInSet(var, values):
+  as_set = set(values)
+  def Func(ctx, cont):
+    if ctx.vars[var] not in as_set:
+      cont()
+  return Func
+
 def ForRange(var, upto):
   def Func(ctx, cont):
     if var in ctx.vars:
@@ -254,3 +275,14 @@ assert_eq(GetAll(Conj(Disj(Equal('x', 'a'), Equal('x', 'b')),
            {'x':'a', 'y':'d'},
            {'x':'b', 'y':'c'},
            {'x':'b', 'y':'d'}])
+
+# Test InSet().
+assert_eq(GetAll(Conj(InSet('x', [1, 2]))),
+          [{'x':1}, {'x':2}])
+assert_eq(GetAll(Conj(Equal('x', 1),
+                      InSet('x', [1, 2]))),
+          [{'x':1}])
+# Test NotInSet().
+assert_eq(GetAll(Conj(InSet('x', [1, 2, 3, 4]),
+                      NotInSet('x', [1, 3]))),
+          [{'x':2}, {'x':4}])

@@ -3,7 +3,7 @@ import sys
 
 import objdump_check
 
-from logic import (Equal, EqualVar, NotEqual, Apply, ForRange,
+from logic import (Equal, EqualVar, NotEqual, InSet, NotInSet, Apply, ForRange,
                    Conj, Disj, Switch,
                    GenerateAll, GetAll,
                    assert_eq)
@@ -186,6 +186,7 @@ ModRMRegister = Conj(
     Equal('has_sib_byte', 0),
     Equal('displacement_bytes', 0),
     Equal('has_gs_prefix', 0),
+    Equal('has_lock_prefix', 0),
     )
 # rm argument is an absolute address with no base/index reg.
 ModRMAbsoluteAddr = Conj(
@@ -275,7 +276,8 @@ NoModRM = Conj(
     Equal('has_modrm_opcode', 0),
     Equal('has_sib_byte', 0),
     Equal('displacement_bytes', 0),
-    Equal('has_gs_prefix', 0))
+    Equal('has_gs_prefix', 0),
+    Equal('has_lock_prefix', 0))
 
 DataOperationWithoutModRM = Conj(
     NoModRM,
@@ -812,15 +814,17 @@ def OptPrependByte(cond, byte_value, dest_var, src_var):
 ConcatBytes = Conj(
     Equal('gs_prefix_byte', 0x65),
     Equal('data16_byte', 0x66),
+    Equal('lock_prefix_byte', 0xf0),
     OptPrependByte('has_gs_prefix', 'gs_prefix_byte', 'bytes', 'bytes1'),
     OptPrependByte('has_data16_prefix', 'data16_byte', 'bytes1', 'bytes2'),
-    Apply('bytes2', PrependByte, ['opcode', 'bytes3']),
-    OptPrependByte('has_opcode2', 'opcode2', 'bytes3', 'bytes4'),
-    OptPrependByte('has_modrm_byte', 'modrm_byte', 'bytes4', 'bytes5'),
-    OptPrependByte('has_sib_byte', 'sib_byte', 'bytes5', 'bytes6'),
-    Apply('bytes6', PrependWildcard, ['displacement_bytes', 'bytes7']),
-    Apply('bytes7', PrependWildcard, ['immediate_bytes', 'bytes8']),
-    Equal('bytes8', []))
+    OptPrependByte('has_lock_prefix', 'lock_prefix_byte', 'bytes2', 'bytes3'),
+    Apply('bytes3', PrependByte, ['opcode', 'bytes4']),
+    OptPrependByte('has_opcode2', 'opcode2', 'bytes4', 'bytes5'),
+    OptPrependByte('has_modrm_byte', 'modrm_byte', 'bytes5', 'bytes6'),
+    OptPrependByte('has_sib_byte', 'sib_byte', 'bytes6', 'bytes7'),
+    Apply('bytes7', PrependWildcard, ['displacement_bytes', 'bytes8']),
+    Apply('bytes8', PrependWildcard, ['immediate_bytes', 'bytes9']),
+    Equal('bytes9', []))
 
 # We call ConcatBytes after setting has_opcode2 to reduce the
 # expanding-out of combinations that ConcatBytes does.
@@ -830,6 +834,13 @@ Instructions = Disj(
          TwoByteOpcodes),
     )
 
+# Instructions which can use the 'lock' prefix.
+lock_whitelist = (
+    'adc', 'add', 'and', 'btc', 'btr', 'bts',
+    'cmpxchg', 'cmpxchg8b', 'dec', 'inc',
+    'neg', 'not', 'or', 'sbb', 'sub',
+    'xadd', 'xchg', 'xor')
+
 Encode = Conj(
     Instructions,
     Switch('has_inst_suffix',
@@ -838,7 +849,12 @@ Encode = Conj(
                         [(0, 1, 'l'),
                          (1, 1, 'w'),
                          (0, 0, 'b')]))),
-    Apply('desc', Format, ['inst', 'inst_suffix', 'args'], '%s%s %s'))
+    Switch('has_lock_prefix',
+           (0, Equal('inst_lock_prefix', '')),
+           (1, Conj(Equal('inst_lock_prefix', 'lock '),
+                    InSet('inst', lock_whitelist)))),
+    Apply('desc', Format, ['inst_lock_prefix', 'inst', 'inst_suffix', 'args'],
+          '%s%s%s %s'))
 
 
 # Test decoding an instruction.
@@ -896,6 +912,12 @@ def TestQuick():
 
 
 def TestMedium():
+  # Check that our lock whitelist corresponds to what we generate.
+  locked_insts = set()
+  GenerateAll(Conj(Equal('has_lock_prefix', 1), OneOfEachType),
+              lambda info: locked_insts.add(info['inst']))
+  assert_eq(locked_insts, set(lock_whitelist))
+
   # These counts are multiplied by 2 for the movl/movw variants.
   # Check all modrm/sib byte values.
   SimpleMov = Conj(Equal('opcode', 0x89),
