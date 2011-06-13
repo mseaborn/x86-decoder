@@ -4,26 +4,35 @@ import sys
 import objdump
 
 
-info = eval(open('trie_data', 'r').read(), {})
-
-
-def CheckInstr(bytes):
-  node = info['start']
+def CheckInstr(trie, bytes):
+  node = trie['start']
   for byte in bytes:
-    if 'XX' in info['map'][node]:
-      node = info['map'][node]['XX']
-    elif byte in info['map'][node]:
-      node = info['map'][node][byte]
+    if 'XX' in trie['map'][node]:
+      node = trie['map'][node]['XX']
+    elif byte in trie['map'][node]:
+      node = trie['map'][node][byte]
     else:
       return False
-  return info['accepts'][node]
+  return trie['accepts'][node]
 
 
 def Format(string):
   return ' '.join('%02x' % ord(byte) for byte in string)
 
-for bytes, disasm in objdump.Decode(sys.argv[1]):
-  ok = CheckInstr(['%02x' % ord(byte) for byte in bytes])
-  if disasm.startswith('j') or 'call' in disasm:
-    ok = 'Jump'
-  print ok, disasm, Format(bytes)
+
+def Main(args):
+  assert len(args) == 2
+  trie_file = args[0]
+  obj_file = args[1]
+
+  trie = eval(open(trie_file, 'r').read(), {})
+
+  for bytes, disasm in objdump.Decode(obj_file):
+    ok = CheckInstr(trie, ['%02x' % ord(byte) for byte in bytes])
+    if disasm.startswith('j') or 'call' in disasm:
+      ok = 'Jump'
+    print ok, disasm, Format(bytes)
+
+
+if __name__ == '__main__':
+  Main(sys.argv[1:])
