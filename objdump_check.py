@@ -36,6 +36,28 @@ comment_regexp = re.compile('\s+#.*$')
 jump_regexp = re.compile('^(jn?[a-z]{1,2}|calll|jmp[lw]?|je?cxz) 0x[0-9a-f]+$')
 
 
+def NormaliseObjdumpDisasm(disasm):
+  # Canonicalise whitespace.
+  disasm = whitespace_regexp.sub(' ', disasm)
+  # Remove comments.
+  disasm = comment_regexp.sub('', disasm)
+  # Canonicalise jump targets.
+  disasm = jump_regexp.sub('\\1 JUMP_DEST', disasm)
+  disasm = (disasm
+            .replace('0x1111111111111111', 'VALUE64')
+            .replace('0x11111111', 'VALUE32')
+            .replace('0x1111', 'VALUE16')
+            .replace('0x11', 'VALUE8')
+            .replace(',', ', '))
+  # gas accepts a ".s" suffix to indicate a non-canonical
+  # reversed-operands encoding.  With "-M suffix", objdump prints
+  # this.
+  disasm = disasm.replace('.s ', ' ')
+  # objdump puts in trailing whitespace sometimes.
+  disasm = disasm.rstrip(' ')
+  return disasm
+
+
 def CrossCheck(obj_file, list_file):
   seq = objdump.Decode('tmp.o')
   for index, line in enumerate(open('tmp.list')):
@@ -45,28 +67,10 @@ def CrossCheck(obj_file, list_file):
     if len(bytes) != len(bytes2):
       print 'Length mismatch (%i): %r %r versus %r %r' % (
         index, bytes2, disasm_orig, bytes, desc)
-    disasm = disasm_orig
-    # Canonicalise whitespace.
-    disasm = whitespace_regexp.sub(' ', disasm)
-    # Remove comments.
-    disasm = comment_regexp.sub('', disasm)
-    # Canonicalise jump targets.
-    disasm = jump_regexp.sub('\\1 JUMP_DEST', disasm)
-    disasm = (disasm
-              .replace('0x1111111111111111', 'VALUE64')
-              .replace('0x11111111', 'VALUE32')
-              .replace('0x1111', 'VALUE16')
-              .replace('0x11', 'VALUE8')
-              .replace(',', ', '))
-    # gas accepts a ".s" suffix to indicate a non-canonical
-    # reversed-operands encoding.  With "-M suffix", objdump prints
-    # this.
-    disasm = disasm.replace('.s ', ' ')
+    disasm = NormaliseObjdumpDisasm(disasm_orig)
     # Remove trailing space from our zero-arg instructions, e.g. 'nop'.
     # TODO: Don't put the trailing space in.
     desc = desc.rstrip(' ')
-    # objdump also puts in trailing whitespace sometimes.
-    disasm = disasm.rstrip(' ')
     if desc != disasm:
       print 'Mismatch (%i): %r != %r (%r) (%s)' % (
         index, desc, disasm, disasm_orig, ' '.join(bytes))
