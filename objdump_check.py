@@ -1,8 +1,7 @@
 
 import re
 import subprocess
-
-import objdump
+import sys
 
 
 def MapWildcard(byte):
@@ -24,9 +23,12 @@ def DisassembleTestCallback(get_instructions, bits):
     count[0] += 1
 
   get_instructions(Callback)
+  print 'Checking %i instructions...' % count[0]
+  # Add a final instruction otherwise we do not catch length
+  # mismatches on the last input instruction.
+  Callback(['90'], 'nop')
   asm_fh.close()
   list_fh.close()
-  print 'Checking %i instructions...' % count[0]
   subprocess.check_call(['gcc', '-c', '-m%i' % bits, 'tmp.S', '-o', 'tmp.o'])
   CrossCheck('tmp.o', 'tmp.list')
 
@@ -41,6 +43,8 @@ def NormaliseObjdumpDisasm(disasm):
   disasm = whitespace_regexp.sub(' ', disasm)
   # Remove comments.
   disasm = comment_regexp.sub('', disasm)
+  # objdump puts in trailing whitespace sometimes.
+  disasm = disasm.rstrip(' ')
   # Canonicalise jump targets.
   disasm = jump_regexp.sub('\\1 JUMP_DEST', disasm)
   disasm = (disasm
@@ -53,20 +57,45 @@ def NormaliseObjdumpDisasm(disasm):
   # reversed-operands encoding.  With "-M suffix", objdump prints
   # this.
   disasm = disasm.replace('.s ', ' ')
-  # objdump puts in trailing whitespace sometimes.
-  disasm = disasm.rstrip(' ')
   return disasm
 
 
-def CrossCheck(obj_file, list_file):
-  seq = objdump.Decode('tmp.o')
-  for index, line in enumerate(open('tmp.list')):
+def ReadObjdump(obj_file):
+  proc = subprocess.Popen(['objdump', '-M', 'suffix', '--prefix-addresses',
+                           '-d', obj_file],
+                          stdout=subprocess.PIPE)
+  regexp = re.compile('0x([0-9a-f]+)\s*')
+  for line in proc.stdout:
+    match = regexp.match(line)
+    if match is not None:
+      addr = int(match.group(1), 16)
+      disasm = line[match.end():]
+      yield addr, disasm
+  assert proc.wait() == 0, proc.wait()
+
+
+def ReadListFile(fh):
+  for line in fh:
     bytes, desc = line.rstrip('\n').split(':', 1)
-    bytes = bytes.split(' ')
-    bytes2, disasm_orig = seq.next()
-    if len(bytes) != len(bytes2):
-      print 'Length mismatch (%i): %r %r versus %r %r' % (
-        index, bytes2, disasm_orig, bytes, desc)
+    yield bytes.split(' '), desc
+
+
+def CrossCheck(obj_file, list_file):
+  objdump_iter = ReadObjdump('tmp.o')
+  expected_addr = 0
+  prev_length = 0
+  for index, (bytes, desc) in enumerate(ReadListFile(open('tmp.list'))):
+    got_addr, disasm_orig = objdump_iter.next()
+    if got_addr != expected_addr:
+      # This only catches mismatches on the previous instruction,
+      # which is why we added an extra final instruction earlier.
+      print 'Length mismatch on previous instruction: got %i, expected %i' % (
+          prev_length + got_addr - expected_addr,
+          prev_length)
+      break
+    expected_addr += len(bytes)
+    prev_length = len(bytes)
+
     disasm = NormaliseObjdumpDisasm(disasm_orig)
     # Remove trailing space from our zero-arg instructions, e.g. 'nop'.
     # TODO: Don't put the trailing space in.
@@ -81,3 +110,12 @@ def DisassembleTest(get_instructions, bits):
     for bytes, desc in get_instructions():
       callback(bytes, desc)
   DisassembleTestCallback(Func, bits)
+
+
+def Main(args):
+  for filename in args:
+    DisassembleTest(lambda: ReadListFile(open(filename, 'r')), 32)
+
+
+if __name__ == '__main__':
+  Main(sys.argv[1:])
