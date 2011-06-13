@@ -826,12 +826,9 @@ ConcatBytes = Conj(
     Apply('bytes8', PrependWildcard, ['immediate_bytes', 'bytes9']),
     Equal('bytes9', []))
 
-# We call ConcatBytes after setting has_opcode2 to reduce the
-# expanding-out of combinations that ConcatBytes does.
-Instructions = Disj(
-    Conj(Equal('has_opcode2', 0), ConcatBytes, OneByteOpcodes),
-    Conj(Equal('has_opcode2', 1), ConcatBytes, Equal('opcode', 0x0f),
-         TwoByteOpcodes),
+AllOpcodes = Disj(
+    Conj(Equal('has_opcode2', 0), OneByteOpcodes),
+    Conj(Equal('has_opcode2', 1), Equal('opcode', 0x0f), TwoByteOpcodes),
     )
 
 # Instructions which can use the 'lock' prefix.
@@ -841,8 +838,8 @@ lock_whitelist = (
     'neg', 'not', 'or', 'sbb', 'sub',
     'xadd', 'xchg', 'xor')
 
-Encode = Conj(
-    Instructions,
+Instructions = Conj(
+    AllOpcodes,
     Switch('has_inst_suffix',
            (0, Equal('inst_suffix', '')),
            (1, Mapping3('has_data16_prefix', 'not_byte_op', 'inst_suffix',
@@ -856,10 +853,17 @@ Encode = Conj(
     Apply('desc', Format, ['inst_lock_prefix', 'inst', 'inst_suffix', 'args'],
           '%s%s%s %s'))
 
+# These orderings have difference performance characteristics:
+#  * 'Encode' is ridiculous for decoding: it generates all instructions
+#    and compares them.
+#  * 'Decode' is inefficient for generating all instructions.
+Encode = Conj(Instructions, ConcatBytes)
+Decode = Conj(ConcatBytes, Instructions)
+
 
 # Test decoding an instruction.
 def TestInstruction(bytes, desc):
-  decoded = GetAll(Conj(Equal('bytes', bytes.split(' ')), Encode))
+  decoded = GetAll(Conj(Equal('bytes', bytes.split(' ')), Decode))
   assert_eq([info['desc'] for info in decoded],
             [desc])
 
