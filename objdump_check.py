@@ -28,6 +28,15 @@ def DisassembleTestCallback(get_instructions, bits):
   list_fh.close()
   print 'Checking %i instructions...' % count[0]
   subprocess.check_call(['gcc', '-c', '-m%i' % bits, 'tmp.S', '-o', 'tmp.o'])
+  CrossCheck('tmp.o', 'tmp.list')
+
+
+whitespace_regexp = re.compile('\s+')
+comment_regexp = re.compile('\s+#.*$')
+jump_regexp = re.compile('^(jn?[a-z]{1,2}|calll|jmp[lw]?|je?cxz) 0x[0-9a-f]+$')
+
+
+def CrossCheck(obj_file, list_file):
   seq = objdump.Decode('tmp.o')
   for index, line in enumerate(open('tmp.list')):
     bytes, desc = line.rstrip('\n').split(':', 1)
@@ -38,12 +47,11 @@ def DisassembleTestCallback(get_instructions, bits):
         index, bytes2, disasm_orig, bytes, desc)
     disasm = disasm_orig
     # Canonicalise whitespace.
-    disasm = re.sub('\s+', ' ', disasm)
+    disasm = whitespace_regexp.sub(' ', disasm)
     # Remove comments.
-    disasm = re.sub('\s+#.*$', '', disasm)
+    disasm = comment_regexp.sub('', disasm)
     # Canonicalise jump targets.
-    disasm = re.sub('^(jn?[a-z]{1,2}|calll|jmp[lw]?|je?cxz) 0x[0-9a-f]+$',
-                    '\\1 JUMP_DEST', disasm)
+    disasm = jump_regexp.sub('\\1 JUMP_DEST', disasm)
     disasm = (disasm
               .replace('0x1111111111111111', 'VALUE64')
               .replace('0x11111111', 'VALUE32')
