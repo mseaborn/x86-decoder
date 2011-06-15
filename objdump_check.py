@@ -100,6 +100,10 @@ def CrossCheck(obj_file, list_file):
     # Remove trailing space from our zero-arg instructions, e.g. 'nop'.
     # TODO: Don't put the trailing space in.
     desc = desc.rstrip(' ')
+    if desc.startswith('TODO'):
+      # Some instructions' disassembly is not done properly yet.  We
+      # are only checking their encoding length.
+      continue
     if desc != disasm:
       print 'Mismatch (%i): %r != %r (%r) (%s)' % (
         index, desc, disasm, disasm_orig, ' '.join(bytes))

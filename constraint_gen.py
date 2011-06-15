@@ -786,6 +786,29 @@ TwoByteOpcodes = Disj(
          Equal('not_byte_op', 1),
          Format_rm_reg),
 
+    # Move with zero/sign extend.
+    # These are unusual in that the smaller opcode of the pair can
+    # take a data16 prefix while the larger opcode cannot.  This is
+    # the opposite from usual.
+    # TODO: These are disassembled incorrectly.  They involve mixed
+    # operand sizes, which will require some refactoring to handle.
+    Conj(Mapping('opcode2', 'not_byte_op',
+                 [(0xb6, 1),
+                  (0xb7, 0), # Misleading: this is not a byte operation.
+                  ]),
+         # 'movzx' is the Intel name.
+         # The ATT names are 'movzbl', 'movzwl', 'movzbw'.
+         Equal('inst', 'TODO movzx_'),
+         Format_rm_reg),
+    Conj(Mapping('opcode2', 'not_byte_op',
+                 [(0xbe, 1),
+                  (0xbf, 0), # Misleading: this is not a byte operation.
+                  ]),
+         # 'movsx' is the Intel name.
+         # The ATT names are 'movsbl', 'movswl', 'movsbw'.
+         Equal('inst', 'TODO movsx_'),
+         Format_rm_reg),
+
     # Added in the 486.
     Conj(Mapping('opcode2', 'not_byte_op',
                  [(0xb0, 0),
