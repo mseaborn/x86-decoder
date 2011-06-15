@@ -157,11 +157,17 @@ def Disj2(term1, term2):
     term2(ctx, cont)
   return Func
 
+def Pass(ctx, cont):
+  cont()
+
+def Fail(ctx, cont):
+  pass
+
 def Conj(*terms):
-  return reduce(Conj2, terms)
+  return reduce(Conj2, terms, Pass)
 
 def Disj(*terms):
-  return reduce(Disj2, terms)
+  return reduce(Disj2, terms, Fail)
 
 
 # Syntactic sugar.
@@ -286,3 +292,8 @@ assert_eq(GetAll(Conj(Equal('x', 1),
 assert_eq(GetAll(Conj(InSet('x', [1, 2, 3, 4]),
                       NotInSet('x', [1, 3]))),
           [{'x':2}, {'x':4}])
+
+# Test Pass.
+assert_eq(GetAll(Conj(Equal('x', 1), Pass)), [{'x':1}])
+# Test Fail.
+assert_eq(GetAll(Conj(Equal('x', 1), Fail)), [])

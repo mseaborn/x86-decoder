@@ -4,7 +4,7 @@ import sys
 import objdump_check
 
 from logic import (Equal, EqualVar, NotEqual, InSet, NotInSet, Apply, ForRange,
-                   Conj, Disj, Switch,
+                   Conj, Disj, Pass, Fail, Switch,
                    GenerateAll, GetAll,
                    assert_eq)
 
@@ -541,7 +541,12 @@ OneByteOpcodes = Disj(
          # 'xchg %eax, %eax' (0x90) is disassembled as 'nop'.
          # On x86-64, it really is a no-op and does not clear the top
          # bits of %rax.
-         NotEqual('reg1', 0), # %eax
+         # However, 'xchgw %ax, %ax' is used as a long (2-byte) nop,
+         # but does not disassemble as 'nop', although it really is a
+         # no-op on x86-64.
+         Switch('has_data16_prefix',
+                (0, NotEqual('reg1', 0)), # %eax
+                (1, Pass)),
          GetArgRegname('reg1_name', 'reg1'),
          GetAccArgRegname,
          Equal('opcode_top', 0x90 >> 3),
