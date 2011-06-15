@@ -279,6 +279,18 @@ NoModRM = Conj(
     Equal('has_gs_prefix', 0),
     Equal('has_lock_prefix', 0))
 
+# Like NoModRM, but allows has_gs_prefix to be 1.
+MemoryAccessWithoutModRM = Conj(
+    Equal('has_modrm_byte', 0),
+    Equal('has_modrm_opcode', 0),
+    Equal('has_sib_byte', 0),
+    Equal('displacement_bytes', 0),
+    Equal('has_lock_prefix', 0),
+    Equal('has_inst_suffix', 1),
+    Mapping('has_gs_prefix', 'mem_prefix',
+            [(0, ''),
+             (1, '%gs:')]))
+
 DataOperationWithoutModRM = Conj(
     NoModRM,
     Equal('has_inst_suffix', 1))
@@ -441,15 +453,15 @@ OneByteOpcodes = Disj(
     Conj(Equal('inst', 'mov'), OpcodePair(0xc6),
          Equal('modrm_opcode', 0), Format_imm_rm),
     Conj(Equal('inst', 'mov'), OpcodePair(0xa0),
-         DataOperationWithoutModRM,
+         MemoryAccessWithoutModRM,
          Equal('immediate_bytes', 4),
          GetAccArgRegname,
-         Apply('args', Format, ['acc_regname'], 'VALUE32, %s')),
+         Apply('args', Format, ['mem_prefix', 'acc_regname'], '%sVALUE32, %s')),
     Conj(Equal('inst', 'mov'), OpcodePair(0xa2),
-         DataOperationWithoutModRM,
+         MemoryAccessWithoutModRM,
          Equal('immediate_bytes', 4),
          GetAccArgRegname,
-         Apply('args', Format, ['acc_regname'], '%s, VALUE32')),
+         Apply('args', Format, ['acc_regname', 'mem_prefix'], '%s, %sVALUE32')),
     Conj(Equal('inst', 'mov'),
          ForRange('reg1', reg_count),
          GetArgRegname('reg1_name', 'reg1'),
