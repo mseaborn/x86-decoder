@@ -824,16 +824,20 @@ ConcatBytes = Conj(
     Equal('gs_prefix_byte', 0x65),
     Equal('data16_byte', 0x66),
     Equal('lock_prefix_byte', 0xf0),
+    Equal('repnz_prefix_byte', 0xf2),
+    Equal('rep_prefix_byte', 0xf3),
     OptPrependByte('has_gs_prefix', 'gs_prefix_byte', 'bytes', 'bytes1'),
     OptPrependByte('has_data16_prefix', 'data16_byte', 'bytes1', 'bytes2'),
     OptPrependByte('has_lock_prefix', 'lock_prefix_byte', 'bytes2', 'bytes3'),
-    Apply('bytes3', PrependByte, ['opcode', 'bytes4']),
-    OptPrependByte('has_opcode2', 'opcode2', 'bytes4', 'bytes5'),
-    OptPrependByte('has_modrm_byte', 'modrm_byte', 'bytes5', 'bytes6'),
-    OptPrependByte('has_sib_byte', 'sib_byte', 'bytes6', 'bytes7'),
-    Apply('bytes7', PrependWildcard, ['displacement_bytes', 'bytes8']),
-    Apply('bytes8', PrependWildcard, ['immediate_bytes', 'bytes9']),
-    Equal('bytes9', []))
+    OptPrependByte('has_repnz_prefix', 'repnz_prefix_byte', 'bytes3', 'bytes4'),
+    OptPrependByte('has_rep_prefix', 'rep_prefix_byte', 'bytes4', 'bytes5'),
+    Apply('bytes5', PrependByte, ['opcode', 'bytes6']),
+    OptPrependByte('has_opcode2', 'opcode2', 'bytes6', 'bytes7'),
+    OptPrependByte('has_modrm_byte', 'modrm_byte', 'bytes7', 'bytes8'),
+    OptPrependByte('has_sib_byte', 'sib_byte', 'bytes8', 'bytes9'),
+    Apply('bytes9', PrependWildcard, ['displacement_bytes', 'bytes10']),
+    Apply('bytes10', PrependWildcard, ['immediate_bytes', 'bytes11']),
+    Equal('bytes11', []))
 
 AllOpcodes = Disj(
     Conj(Equal('has_opcode2', 0), OneByteOpcodes),
@@ -859,8 +863,26 @@ Instructions = Conj(
            (0, Equal('inst_lock_prefix', '')),
            (1, Conj(Equal('inst_lock_prefix', 'lock '),
                     InSet('inst', lock_whitelist)))),
-    Apply('desc', Format, ['inst_lock_prefix', 'inst', 'inst_suffix', 'args'],
-          '%s%s%s %s'))
+    Switch('has_rep_prefix',
+           (0, Equal('inst_rep_prefix', '')),
+           (1, Conj(Equal('inst_rep_prefix', 'rep '),
+                    InSet('inst', ['movs', 'stos', 'lods']))),
+           (1, Conj(Equal('inst_rep_prefix', 'repz '),
+                    InSet('inst', ['cmps', 'scas'])))),
+    Switch('has_repnz_prefix',
+           (0, Equal('inst_repnz_prefix', '')),
+           (1, Conj(Equal('inst_repnz_prefix', 'repnz '),
+                    InSet('inst', ['movs', 'cmps', 'stos', 'lods', 'scas'])))),
+    # Can't have both rep* prefixes.
+    Mapping('has_rep_prefix', 'has_repnz_prefix',
+            [(0, 0),
+             (1, 0),
+             (0, 1)]),
+    Apply('desc', Format, ['inst_rep_prefix',
+                           'inst_repnz_prefix',
+                           'inst_lock_prefix',
+                           'inst', 'inst_suffix', 'args'],
+          '%s%s%s%s%s %s'))
 
 # These orderings have difference performance characteristics:
 #  * 'Encode' is ridiculous for decoding: it generates all instructions
