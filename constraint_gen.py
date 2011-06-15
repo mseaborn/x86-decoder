@@ -515,16 +515,12 @@ OneByteOpcodes = Disj(
 
     Conj(Equal('inst', 'hlt'),
          Equal('opcode', 0xf4),
-         NoModRM,
-         Equal('has_inst_suffix', 0),
-         Equal('has_data16_prefix', 0),
+         NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     Conj(Equal('inst', 'nop'),
          Equal('opcode', 0x90),
-         NoModRM,
-         Equal('has_inst_suffix', 0),
-         Equal('has_data16_prefix', 0),
+         NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     # 'xchg %eax, %reg'
@@ -610,9 +606,7 @@ OneByteOpcodes = Disj(
     # We do not handle 'jcxz' because it uses an addr16 prefix.
     Conj(Equal('inst', 'jecxz'),
          Equal('opcode', 0xe3),
-         Equal('has_data16_prefix', 0),
-         Equal('has_inst_suffix', 0),
-         NoModRM,
+         NoDataOperation,
          Equal('immediate_bytes', 1),
          Equal('args', 'JUMP_DEST')),
 
@@ -643,9 +637,7 @@ OneByteOpcodes = Disj(
                   ('cld', 0xfc), # Clear direction flag
                   ('std', 0xfd), # Set direction flag
                   ]),
-         NoModRM,
-         Equal('has_inst_suffix', 0),
-         Equal('has_data16_prefix', 0),
+         NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
 
