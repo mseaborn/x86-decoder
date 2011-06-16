@@ -66,8 +66,10 @@ class Context(object):
     self.changes.append(Undo)
     self.varrs[var] = ANY
     self.vars[var] = i
-    for run_constraint in self.waiting.get(var, []):
-      if not run_constraint():
+    for constraint in self.waiting.get(var, []):
+      status = constraint.RunConstraint(self)
+      assert status in ('fail', 'done', 'skip'), status
+      if status == 'fail':
         return False
     return True
 
@@ -87,6 +89,14 @@ class Context(object):
       self.waiting[var].remove(func)
     self.changes.append(Undo)
 
+  def AddConstraint(self, con, cont):
+    status = con.RunConstraint(self)
+    if status != 'fail':
+      if status != 'done':
+        for var in con.var_list:
+          self.AddWaiter(var, con)
+      cont()
+
   def Choice(self):
     old_changes = self.changes
     self.changes = []
@@ -102,66 +112,11 @@ def Equal(var, i):
     ctx.Set(var, i, cont)
   return Func
 
-# This could be implemented in terms of Apply().
-def EqualVar(var1, var2):
-  def Func(ctx, cont):
-    # Fast paths first.
-    if ctx.IsSet(var1):
-      ctx.Set(var2, ctx.GetValue(var1), cont)
-    elif ctx.IsSet(var2):
-      ctx.Set(var1, ctx.GetValue(var2), cont)
-    else:
-      def RunConstraint():
-        if ctx.IsSet(var1):
-          return ctx.TrySet(var2, ctx.GetValue(var1))
-        elif ctx.IsSet(var2):
-          return ctx.TrySet(var1, ctx.GetValue(var2))
-        return True
-      ctx.AddWaiter(var1, RunConstraint)
-      ctx.AddWaiter(var2, RunConstraint)
-      cont()
-  return Func
-
 # Note that this is non-generative: it only works if var has already
 # been assigned/constrained.
 def NotEqual(var, i):
   def Func(ctx, cont):
     if ctx.TryExclude(var, [i]):
-      cont()
-  return Func
-
-def Apply(dest_var, func, arg_vars, *args):
-  def Func(ctx, cont):
-    # Fast paths first.
-    # These duplicate a chunk of code, unfortunately.
-    if all(ctx.IsSet(var) for var in arg_vars):
-      result = func([ctx.GetValue(var) for var in arg_vars], *args)
-      ctx.Set(dest_var, result, cont)
-    elif ctx.IsSet(dest_var) and hasattr(func, 'rev'):
-      values = func.rev(ctx.GetValue(dest_var), *args)
-      if values is None:
-        return
-      assert len(values) == len(arg_vars)
-      for var, x in zip(arg_vars, values):
-        if not ctx.TrySet(var, x):
-          return
-      cont()
-    else:
-      def RunConstraint():
-        if all(ctx.IsSet(var) for var in arg_vars):
-          result = func([ctx.GetValue(var) for var in arg_vars], *args)
-          return ctx.TrySet(dest_var, result)
-        elif ctx.IsSet(dest_var) and hasattr(func, 'rev'):
-          values = func.rev(ctx.GetValue(dest_var), *args)
-          if values is None:
-            return False
-          assert len(values) == len(arg_vars)
-          for var, x in zip(arg_vars, values):
-            if not ctx.TrySet(var, x):
-              return False
-        return True
-      for var in [dest_var] + arg_vars:
-        ctx.AddWaiter(var, RunConstraint)
       cont()
   return Func
 
@@ -209,6 +164,66 @@ def Conj(*terms):
 
 def Disj(*terms):
   return reduce(Disj2, terms, Fail)
+
+
+class EqualVarConstraint(object):
+
+  def __init__(self, var1, var2):
+    self.var1 = var1
+    self.var2 = var2
+    self.var_list = [var1, var2]
+
+  def RunConstraint(self, ctx):
+    if ctx.IsSet(self.var1):
+      if not ctx.TrySet(self.var2, ctx.GetValue(self.var1)):
+        return 'fail'
+      return 'done'
+    elif ctx.IsSet(self.var2):
+      if not ctx.TrySet(self.var1, ctx.GetValue(self.var2)):
+        return 'fail'
+      return 'done'
+    return 'skip'
+
+# This could be implemented in terms of Apply().
+def EqualVar(var1, var2):
+  constraint = EqualVarConstraint(var1, var2)
+  def Func(ctx, cont):
+    ctx.AddConstraint(constraint, cont)
+  return Func
+
+
+class ApplyConstraint(object):
+
+  def __init__(self, dest_var, func, arg_vars, args):
+    self.dest_var = dest_var
+    self.func = func
+    self.arg_vars = arg_vars
+    self.args = args
+    self.var_list = [dest_var] + arg_vars
+
+  def RunConstraint(self, ctx):
+    if all(ctx.IsSet(var) for var in self.arg_vars):
+      result = self.func([ctx.GetValue(var) for var in self.arg_vars],
+                         *self.args)
+      if not ctx.TrySet(self.dest_var, result):
+        return 'fail'
+      return 'done'
+    elif ctx.IsSet(self.dest_var) and hasattr(self.func, 'rev'):
+      values = self.func.rev(ctx.GetValue(self.dest_var), *self.args)
+      if values is None:
+        return 'fail'
+      assert len(values) == len(self.arg_vars)
+      for var, x in zip(self.arg_vars, values):
+        if not ctx.TrySet(var, x):
+          return 'fail'
+      return 'done'
+    return 'skip'
+
+def Apply(dest_var, func, arg_vars, *args):
+  constraint = ApplyConstraint(dest_var, func, arg_vars, args)
+  def Func(ctx, cont):
+    ctx.AddConstraint(constraint, cont)
+  return Func
 
 
 # Syntactic sugar.
