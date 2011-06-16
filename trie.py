@@ -36,6 +36,10 @@ def MakeInterned(children, accept):
 
 EmptyNode = Trie()
 
+AcceptNode = Trie()
+AcceptNode.accept = True
+
+
 # Assumes that node1 is an already-interned node.
 # node2 does not have to be an interned node.
 def Merge(node1, node2):
@@ -120,6 +124,11 @@ def Main(args):
     Add(batch, bytes, '')
   root = Merge(root, batch)
 
+  output_filename = '%s.trie' % filename
+  WriteToFile(output_filename, root)
+
+
+def WriteToFile(output_filename, root):
   node_list = GetAllNodes(root)
   for i, node in enumerate(node_list):
     node.id = i
@@ -129,7 +138,6 @@ def Main(args):
                       for node in node_list),
           "accepts": dict((node.id, node.accept)
                           for node in node_list)}
-  output_filename = '%s.trie' % filename
   fh = open(output_filename, 'w')
   fh.write(repr(info))
   fh.close()
