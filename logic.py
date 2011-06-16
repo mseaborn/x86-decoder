@@ -10,6 +10,7 @@ ANY = Any()
 class Context(object):
 
   def __init__(self):
+    self.vars = {}
     self.varrs = {}
     self.changes = []
     self.waiting = {}
@@ -22,13 +23,13 @@ class Context(object):
       self.varrs[var] = old_rng
     self.changes.append(Undo)
     self.varrs[var] = new_rng
-    if len(new_rng) == 1:
-      for run_constraint in self.waiting.get(var, []):
-        if not run_constraint():
-          return False
+    # We could test for len(new_rng) == 1 here and run constraints,
+    # but it is not necessary.
     return True
 
   def TrySetRange(self, var, rng):
+    if var in self.vars:
+      return self.vars[var] in rng
     old_rng = self.varrs.get(var, ANY)
     if old_rng is ANY:
       new_rng = frozenset(rng)
@@ -40,12 +41,12 @@ class Context(object):
     return self._SetRange(var, old_rng, new_rng)
 
   def TryExclude(self, var, excl_list):
+    if var in self.vars:
+      return self.vars[var] not in excl_list
     old_rng = self.varrs.get(var, ANY)
-    if old_rng is ANY:
-      raise AssertionError()
     new_rng = old_rng.difference(excl_list)
     if len(new_rng) == len(old_rng):
-      # No change
+      # No change: return early without running any constraints.
       return True
     return self._SetRange(var, old_rng, new_rng)
 
@@ -53,20 +54,32 @@ class Context(object):
   # Returns True if successful.
   # Returns False if this produced a conflict.
   def TrySet(self, var, i):
-    return self.TrySetRange(var, [i])
+    if var in self.vars:
+      return self.vars[var] == i
+    old_rng = self.varrs.get(var, ANY)
+    if old_rng is not ANY and i not in old_rng:
+      return False
+
+    def Undo():
+      self.varrs[var] = old_rng
+      del self.vars[var]
+    self.changes.append(Undo)
+    self.varrs[var] = ANY
+    self.vars[var] = i
+    for run_constraint in self.waiting.get(var, []):
+      if not run_constraint():
+        return False
+    return True
 
   def Set(self, var, i, cont):
     if self.TrySet(var, i):
       cont()
 
   def IsSet(self, var):
-    rng = self.varrs.get(var, ANY)
-    return rng is not ANY and len(rng) == 1
+    return var in self.vars
 
   def GetValue(self, var):
-    rng = self.varrs[var]
-    assert len(rng) == 1
-    return tuple(rng)[0]
+    return self.vars[var]
 
   def AddWaiter(self, var, func):
     self.waiting.setdefault(var, []).append(func)
@@ -208,18 +221,21 @@ def GenerateAll(term, callback):
   ctx = Context()
 
   def Cont():
-    var_list = sorted(var for var in ctx.varrs.iterkeys())
+    var_list = sorted(var for var, rng in ctx.varrs.iteritems())
     def Rec(i):
       if i < len(var_list):
         var = var_list[i]
-        for x in ctx.varrs[var]:
-          restore = ctx.Choice()
-          if ctx.TrySet(var, x):
-            Rec(i + 1)
-          restore()
+        rng = ctx.varrs.get(var, ANY)
+        if rng is ANY:
+          Rec(i + 1)
+        else:
+          for x in sorted(rng):
+            restore = ctx.Choice()
+            if ctx.TrySet(var, x):
+              Rec(i + 1)
+            restore()
       else:
-        copy = dict((var, ctx.GetValue(var)) for var in ctx.varrs.iterkeys())
-        callback(copy)
+        callback(ctx.vars.copy())
     Rec(0)
 
   term(ctx, Cont)
