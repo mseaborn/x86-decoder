@@ -6,6 +6,20 @@ import logic
 import trie
 
 
+NOT_FOUND = object()
+
+
+def Memoize(func):
+  cache = {}
+  def Wrapper(*args):
+    value = cache.get(args, NOT_FOUND)
+    if value is NOT_FOUND:
+      value = func(*args)
+      cache[args] = value
+    return value
+  return Wrapper
+
+
 def GetApplyConstraint(ctx, var, func):
   for con in ctx.waiting.get(var, []):
     if (isinstance(con, logic.ApplyConstraint) and
@@ -35,54 +49,69 @@ def FormatByte(byte):
   return '%02x' % byte
 
 
-def FollowByte(ctx, var):
+def TriePrepend(bytes, tail_trie):
+  children = {}
+  for byte in bytes:
+    children[FormatByte(byte)] = tail_trie
+  return trie.MakeInterned(children, False)
+
+
+@Memoize
+def TrieCatPrepend(vals, sizes, tail_trie):
+  bytes = [constraint_gen.CatBits(perm, sizes)
+           for perm in Permutations(vals)]
+  return TriePrepend(bytes, tail_trie)
+
+
+def FollowByte(ctx, var, tail_trie):
   if var in ctx.vars:
-    return [ctx.vars[var]]
+    return TriePrepend([ctx.vars[var]], tail_trie)
   for con in GetApplyConstraint(ctx, var, constraint_gen.CatBits):
-    vals = [GetVarValues(ctx, arg) for arg in con.arg_vars]
-    return [constraint_gen.CatBits(perm, *con.args)
-            for perm in Permutations(vals)]
+    vals = tuple(tuple(sorted(GetVarValues(ctx, arg))) for arg in con.arg_vars)
+    sizes = tuple(con.args[0])
+    return TrieCatPrepend(vals, sizes, tail_trie)
   raise AssertionError('FollowByte failed')
 
 
 def FollowBytes(ctx, var):
   if var in ctx.vars:
-    return ctx.vars[var]
+    return TrieOfList(tuple(ctx.vars[var]))
   for con in ctx.waiting.get(var, []):
     if isinstance(con, logic.EqualVarConstraint) and con.var1 == var:
       return FollowBytes(ctx, con.var2)
   for con in GetApplyConstraint(ctx, var, constraint_gen.PrependByte):
-    return [map(FormatByte, FollowByte(ctx, con.arg_vars[0]))] + \
-            FollowBytes(ctx, con.arg_vars[1])
+    return FollowByte(ctx, con.arg_vars[0],
+                      FollowBytes(ctx, con.arg_vars[1]))
   raise AssertionError('FollowBytes failed')
 
 
+@Memoize
 def TrieOfList(bytes):
   node = trie.AcceptNode
-  for item in reversed(bytes):
-    children = {}
-    if isinstance(item, list):
-      for byte in item:
-        children[byte] = node
-    else:
-      children[item] = node
-    node = trie.Trie()
-    node.children = children
+  for byte in reversed(bytes):
+    node = trie.MakeInterned({byte: node}, False)
   return node
+
+
+def Time(func):
+  t0 = time.time()
+  r = func()
+  t1 = time.time()
+  print '%s took %fs' % (func, t1 - t0)
+  return r
 
 
 class Generator(object):
 
   def __init__(self):
     self.ctx = logic.Context()
-    self.root = trie.EmptyNode
+    self.got_nodes = []
     self.count = 0
     self.start_time = time.time()
     self.next_time = self.start_time + 1
 
   def Add(self):
-    bytes = FollowBytes(self.ctx, 'bytes')
-    self.root = trie.Merge(self.root, TrieOfList(bytes))
+    self.got_nodes.append(FollowBytes(self.ctx, 'bytes'))
     # Print stats
     self.count += 1
     time_now = time.time()
@@ -94,12 +123,13 @@ class Generator(object):
 
   def Run(self, term):
     term(self.ctx, self.Add)
+    return Time(lambda: trie.MergeMany(self.got_nodes))
 
 
 def Main():
   generator = Generator()
-  generator.Run(constraint_gen.Encode)
-  trie.WriteToFile('new.trie', generator.root)
+  root = generator.Run(constraint_gen.Encode)
+  trie.WriteToFile('new.trie', root)
 
 
 if __name__ == '__main__':

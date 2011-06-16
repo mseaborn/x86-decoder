@@ -57,6 +57,29 @@ def Merge(node1, node2):
   return MakeInterned(children, node1.accept or node2.accept)
 
 
+# Assumes all the input nodes are interned.
+def MergeMany(nodes):
+  if len(nodes) == 1:
+    return list(nodes)[0]
+  if len(nodes) == 0:
+    return EmptyNode
+  children = {}
+  keys = set()
+  accept = False
+  for node in nodes:
+    keys.update(node.children.iterkeys())
+    if node.accept:
+      accept = True
+  for key in keys:
+    cs = set()
+    for node in nodes:
+      child = node.children.get(key, EmptyNode)
+      if child != EmptyNode:
+        cs.add(child)
+    children[key] = MergeMany(cs)
+  return MakeInterned(children, accept)
+
+
 def Pr(node, stream, indent=0):
   ind = '  ' * indent
   if node.accept:
