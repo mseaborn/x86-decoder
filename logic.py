@@ -1,30 +1,72 @@
 
+class Any(object):
+
+  def __repr__(self):
+    return '<ANY>'
+
+ANY = Any()
+
+
 class Context(object):
 
   def __init__(self):
-    self.vars = {}
+    self.varrs = {}
     self.changes = []
     self.waiting = {}
+
+  def _SetRange(self, var, old_rng, new_rng):
+    if len(new_rng) == 0:
+      # Failure: prune early.
+      return False
+    def Undo():
+      self.varrs[var] = old_rng
+    self.changes.append(Undo)
+    self.varrs[var] = new_rng
+    if len(new_rng) == 1:
+      for run_constraint in self.waiting.get(var, []):
+        if not run_constraint():
+          return False
+    return True
+
+  def TrySetRange(self, var, rng):
+    old_rng = self.varrs.get(var, ANY)
+    if old_rng is ANY:
+      new_rng = frozenset(rng)
+    else:
+      new_rng = old_rng.intersection(rng)
+      if len(new_rng) == len(old_rng):
+        # No change: return early without running any constraints.
+        return True
+    return self._SetRange(var, old_rng, new_rng)
+
+  def TryExclude(self, var, excl_list):
+    old_rng = self.varrs.get(var, ANY)
+    if old_rng is ANY:
+      raise AssertionError()
+    new_rng = old_rng.difference(excl_list)
+    if len(new_rng) == len(old_rng):
+      # No change
+      return True
+    return self._SetRange(var, old_rng, new_rng)
 
   # Tries to set var to i.
   # Returns True if successful.
   # Returns False if this produced a conflict.
   def TrySet(self, var, i):
-    if var in self.vars:
-      return self.vars[var] == i
-    else:
-      def Undo():
-        del self.vars[var]
-      self.changes.append(Undo)
-      self.vars[var] = i
-      for run_constraint in self.waiting.get(var, []):
-        if not run_constraint():
-          return False
-      return True
+    return self.TrySetRange(var, [i])
 
   def Set(self, var, i, cont):
     if self.TrySet(var, i):
       cont()
+
+  def IsSet(self, var):
+    rng = self.varrs.get(var, ANY)
+    return rng is not ANY and len(rng) == 1
+
+  def GetValue(self, var):
+    rng = self.varrs[var]
+    assert len(rng) == 1
+    return tuple(rng)[0]
 
   def AddWaiter(self, var, func):
     self.waiting.setdefault(var, []).append(func)
@@ -36,7 +78,7 @@ class Context(object):
     old_changes = self.changes
     self.changes = []
     def Restore():
-      for undo in self.changes:
+      for undo in reversed(self.changes):
         undo()
       self.changes = old_changes
     return Restore
@@ -51,16 +93,16 @@ def Equal(var, i):
 def EqualVar(var1, var2):
   def Func(ctx, cont):
     # Fast paths first.
-    if var1 in ctx.vars:
-      ctx.Set(var2, ctx.vars[var1], cont)
-    elif var2 in ctx.vars:
-      ctx.Set(var1, ctx.vars[var2], cont)
+    if ctx.IsSet(var1):
+      ctx.Set(var2, ctx.GetValue(var1), cont)
+    elif ctx.IsSet(var2):
+      ctx.Set(var1, ctx.GetValue(var2), cont)
     else:
       def RunConstraint():
-        if var1 in ctx.vars:
-          return ctx.TrySet(var2, ctx.vars[var1])
-        elif var2 in ctx.vars:
-          return ctx.TrySet(var1, ctx.vars[var2])
+        if ctx.IsSet(var1):
+          return ctx.TrySet(var2, ctx.GetValue(var1))
+        elif ctx.IsSet(var2):
+          return ctx.TrySet(var1, ctx.GetValue(var2))
         return True
       ctx.AddWaiter(var1, RunConstraint)
       ctx.AddWaiter(var2, RunConstraint)
@@ -68,10 +110,10 @@ def EqualVar(var1, var2):
   return Func
 
 # Note that this is non-generative: it only works if var has already
-# been assigned.
+# been assigned/constrained.
 def NotEqual(var, i):
   def Func(ctx, cont):
-    if ctx.vars[var] != i:
+    if ctx.TryExclude(var, [i]):
       cont()
   return Func
 
@@ -79,11 +121,11 @@ def Apply(dest_var, func, arg_vars, *args):
   def Func(ctx, cont):
     # Fast paths first.
     # These duplicate a chunk of code, unfortunately.
-    if all(var in ctx.vars for var in arg_vars):
-      result = func([ctx.vars[var] for var in arg_vars], *args)
+    if all(ctx.IsSet(var) for var in arg_vars):
+      result = func([ctx.GetValue(var) for var in arg_vars], *args)
       ctx.Set(dest_var, result, cont)
-    elif dest_var in ctx.vars and hasattr(func, 'rev'):
-      values = func.rev(ctx.vars[dest_var], *args)
+    elif ctx.IsSet(dest_var) and hasattr(func, 'rev'):
+      values = func.rev(ctx.GetValue(dest_var), *args)
       if values is None:
         return
       assert len(values) == len(arg_vars)
@@ -93,11 +135,11 @@ def Apply(dest_var, func, arg_vars, *args):
       cont()
     else:
       def RunConstraint():
-        if all(var in ctx.vars for var in arg_vars):
-          result = func([ctx.vars[var] for var in arg_vars], *args)
+        if all(ctx.IsSet(var) for var in arg_vars):
+          result = func([ctx.GetValue(var) for var in arg_vars], *args)
           return ctx.TrySet(dest_var, result)
-        elif dest_var in ctx.vars and hasattr(func, 'rev'):
-          values = func.rev(ctx.vars[dest_var], *args)
+        elif ctx.IsSet(dest_var) and hasattr(func, 'rev'):
+          values = func.rev(ctx.GetValue(dest_var), *args)
           if values is None:
             return False
           assert len(values) == len(arg_vars)
@@ -113,35 +155,21 @@ def Apply(dest_var, func, arg_vars, *args):
 def InSet(var, values):
   as_set = set(values)
   def Func(ctx, cont):
-    if var in ctx.vars:
-      # Fast path.
-      if ctx.vars[var] in as_set:
-        cont()
-    else:
-      for x in values:
-        restore = ctx.Choice()
-        ctx.Set(var, x, cont)
-        restore()
+    if ctx.TrySetRange(var, as_set):
+      cont()
   return Func
 
 def NotInSet(var, values):
   as_set = set(values)
   def Func(ctx, cont):
-    if ctx.vars[var] not in as_set:
+    if ctx.TryExclude(var, as_set):
       cont()
   return Func
 
 def ForRange(var, upto):
   def Func(ctx, cont):
-    if var in ctx.vars:
-      # Fast path.
-      if 0 <= ctx.vars[var] < upto:
-        cont()
-    else:
-      for x in xrange(upto):
-        restore = ctx.Choice()
-        ctx.Set(var, x, cont)
-        restore()
+    if ctx.TrySetRange(var, xrange(upto)):
+      cont()
   return Func
 
 def Conj2(term1, term2):
@@ -178,11 +206,29 @@ def Switch(var, *branches):
 
 def GenerateAll(term, callback):
   ctx = Context()
-  term(ctx, lambda: callback(ctx.vars.copy()))
-  for undo in ctx.changes:
+
+  def Cont():
+    var_list = sorted(var for var in ctx.varrs.iterkeys())
+    def Rec(i):
+      if i < len(var_list):
+        var = var_list[i]
+        for x in ctx.varrs[var]:
+          restore = ctx.Choice()
+          if ctx.TrySet(var, x):
+            Rec(i + 1)
+          restore()
+      else:
+        copy = dict((var, ctx.GetValue(var)) for var in ctx.varrs.iterkeys())
+        callback(copy)
+    Rec(0)
+
+  term(ctx, Cont)
+  # Sanity check: Check that constraints get undone correctly.
+  for undo in reversed(ctx.changes):
     undo()
   ctx.changes = []
-  assert ctx.vars == {}, ctx.vars
+  for var, rng in ctx.varrs.iteritems():
+    assert rng is ANY, (var, rng)
   for var, waiters in ctx.waiting.iteritems():
     assert waiters == [], var
 
