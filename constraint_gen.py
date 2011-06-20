@@ -13,6 +13,10 @@ def IfEqual(var, x, then_clause, else_clause):
   return Disj(Conj(Equal(var, x), then_clause),
               Conj(NotEqual(var, x), else_clause))
 
+def IfInSet(var, x, then_clause, else_clause):
+  return Disj(Conj(InSet(var, x), then_clause),
+              Conj(NotInSet(var, x), else_clause))
+
 def IfEqual2(var1, x1, var2, x2, then_clause, else_clause):
   # This is better than writing the more symmetrical code:
   #   Disj(Conj(Equal(var1, x1),
@@ -194,6 +198,15 @@ ModRMRegister = Conj(
     Equal('has_gs_prefix', 0),
     Equal('has_lock_prefix', 0),
     )
+# As above, but for x87 floating point instructions.
+ModRMRegisterX87 = Conj(
+    ForRange('reg2', reg_count),
+    Apply('rm_arg', Format, ['reg2'], '%%st(%i)'),
+    Equal('mod', 3),
+    Equal('has_sib_byte', 0),
+    Equal('displacement_bytes', 0),
+    Equal('has_gs_prefix', 0),
+    )
 # rm argument is an absolute address with no base/index reg.
 ModRMAbsoluteAddr = Conj(
     Equal('mod', 0),
@@ -250,18 +263,21 @@ ModRMSib = Conj(
                         Equal('displacement_bytes', 0),
                         EqualVar('mem_arg', 'sib_arg')))),
          ))
-ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
-             Equal('has_modrm_byte', 1),
-             Disj(ModRMRegister,
-                  # These cases all perform memory accesses, so we may
-                  # need to add a '%gs:' prefix.
-                  Conj(Disj(ModRMAbsoluteAddr,
-                            ModRMDisp,
-                            ModRMSib),
-                       Switch('has_gs_prefix',
-                              (0, EqualVar('rm_arg', 'mem_arg')),
-                              (1, Apply('rm_arg', Format, ['mem_arg'],
-                                        '%%gs:%s'))))))
+ModRMMemory = Conj(
+    # These cases all perform memory accesses, so we may need to add a
+    # '%gs:' prefix.
+    Disj(ModRMAbsoluteAddr,
+         ModRMDisp,
+         ModRMSib),
+    Switch('has_gs_prefix',
+           (0, EqualVar('rm_arg', 'mem_arg')),
+           (1, Apply('rm_arg', Format, ['mem_arg'],
+                     '%%gs:%s'))))
+ModRMEncoding = Conj(
+    Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
+    Equal('has_modrm_byte', 1))
+ModRM = Conj(ModRMEncoding,
+             Disj(ModRMRegister, ModRMMemory))
 ModRMDoubleArg = Conj(Equal('has_modrm_opcode', 0),
                       ForRange('reg1', reg_count),
                       GetArgRegname('reg1_name', 'reg1'),
@@ -364,6 +380,286 @@ Format_imm_eax = Conj(
     DefaultImmediateSize,
     GetAccArgRegname,
     Apply('args', Format, ['immediate_desc', 'acc_regname'], '%s, %s'))
+
+
+X87Common = Conj(
+    Equal('has_modrm_opcode', 1),
+    EqualVar('reg1', 'modrm_opcode'),
+    Equal('has_data16_prefix', 0),
+    Equal('immediate_bytes', 0))
+
+X87_acc_hidden = EqualVar('args', 'rm_arg')
+X87_acc_shown_first = Apply('args', Format, ['rm_arg'], '%%st, %s')
+X87_acc_shown_second = Apply('args', Format, ['rm_arg'], '%s, %%st')
+
+# Register-to-register-only operation
+X87_reg = Conj(
+    X87Common,
+    ModRMEncoding,
+    ModRMRegisterX87,
+    Equal('inst_suffix', ''))
+
+X87_mem = Conj(
+    X87Common,
+    ModRMEncoding,
+    ModRMMemory,
+    X87_acc_hidden,
+    Mapping('x87_size', 'inst_suffix',
+            [('mem80real', 't'),
+             ('mem64real', 'l'),
+             ('mem32real', 's'),
+             ('mem64int', 'll'),
+             ('mem32int', 'l'),
+             ('mem16int', ''),
+             ('mem80dec', ''),
+             ('mem14', 'l'), # 14 or 28 byte env
+             ('mem16', ''),
+             ('mem98', 'l'), # mem98/108e
+             ]))
+
+# X87_noargs instructions effectively use two-byte opcodes, with the
+# modrm byte as the second opcode.
+X87_modrm_as_opcode = Conj(
+    X87Common,
+    Equal('has_modrm_byte', 1),
+    Equal('has_sib_byte', 0),
+    Equal('displacement_bytes', 0),
+    Equal('has_gs_prefix', 0),
+    Equal('inst_suffix', ''))
+X87_noargs = Conj(X87_modrm_as_opcode, Equal('args', ''))
+X87_reg_ax = Conj(X87_modrm_as_opcode, Equal('args', '%ax'))
+
+# x87 floating point instructions.
+# These are grouped by opcode.  An alternative way of organising these
+# instructions would be to group them into:
+#  * instructions with a memory operand (X87_mem)
+#  * instructions with a register operand (X87_reg)
+#  * instructions with no extra operand (X87_noargs)
+# There could be a big table for each of these three groups.
+X87Instructions = Disj(
+    Conj(Equal('opcode', 0xd8),
+         Mapping('inst', 'modrm_opcode',
+                 [('fadd', 0),
+                  ('fmul', 1),
+                  ('fcom', 2),
+                  ('fcomp', 3),
+                  ('fsub', 4),
+                  ('fsubr', 5),
+                  ('fdiv', 6),
+                  ('fdivr', 7),
+                  ]),
+         Disj(Conj(Equal('x87_size', 'mem32real'),
+                   X87_mem),
+              Conj(X87_reg,
+                   IfInSet('inst', ['fcom', 'fcomp'],
+                           X87_acc_hidden,
+                           X87_acc_shown_second)))),
+    Conj(Equal('opcode', 0xd9),
+         Disj(Conj(X87_mem,
+                   Mapping3('inst', 'modrm_opcode', 'x87_size',
+                            [('fld', 0, 'mem32real'),
+                             # /1 is invalid.
+                             ('fst', 2, 'mem32real'),
+                             ('fstp', 3, 'mem32real'),
+                             ('fldenv', 4, 'mem14'),
+                             ('fldcw', 5, 'mem16'),
+                             ('fnstenv', 6, 'mem14'),
+                             ('fnstcw', 7, 'mem16')])),
+              Conj(Mapping('inst', 'modrm_opcode',
+                           [('fld', 0),
+                            ('fxch', 1)]),
+                   X87_reg, X87_acc_hidden),
+              Conj(Equal('opcode', 0xd9),
+                   X87_noargs,
+                   Mapping('inst', 'modrm_byte',
+                           [('fnop', 0xd0),
+                            # /4:
+                            ('fchs', 0xe0),
+                            ('fabs', 0xe1),
+                            # invalid: 0xe2
+                            # invalid: 0xe3
+                            ('ftst', 0xe4),
+                            ('fxam', 0xe5),
+                            # invalid: 0xe6
+                            # invalid: 0xe7
+                            # /5:
+                            ('fld1', 0xe8),
+                            ('fldl2t', 0xe9),
+                            ('fldl2e', 0xea),
+                            ('fldpi', 0xeb),
+                            ('fldlg2', 0xec),
+                            ('fldln2', 0xed),
+                            ('fldz', 0xee),
+                            # invalid: 0xef
+                            # /6:
+                            ('f2xm1', 0xf0),
+                            ('fyl2x', 0xf1),
+                            ('fptan', 0xf2),
+                            ('fpatan', 0xf3),
+                            ('fxtract', 0xf4),
+                            ('fprem1', 0xf5),
+                            ('fdecstp', 0xf6),
+                            ('fincstp', 0xf7),
+                            # /7:
+                            ('fprem', 0xf8),
+                            ('fyl2xp1', 0xf9),
+                            ('fsqrt', 0xfa),
+                            ('fsincos', 0xfb),
+                            ('frndint', 0xfc),
+                            ('fscale', 0xfd),
+                            ('fsin', 0xfe),
+                            ('fcos', 0xff),
+                            ])))),
+    Conj(Equal('opcode', 0xda),
+         Disj(Conj(Mapping('inst', 'modrm_opcode',
+                           [('fiadd', 0),
+                            ('fimul', 1),
+                            ('ficom', 2),
+                            ('ficomp', 3),
+                            ('fisub', 4),
+                            ('fisubr', 5),
+                            ('fidiv', 6),
+                            ('fidivr', 7),
+                            ]),
+                   Equal('x87_size', 'mem32int'),
+                   X87_mem),
+              Conj(Mapping('inst', 'modrm_opcode',
+                           [('fcmovb', 0),
+                            ('fcmove', 1),
+                            ('fcmovbe', 2),
+                            ('fcmovu', 3),
+                            ]),
+                   X87_reg, X87_acc_shown_second),
+              Conj(Equal('inst', 'fucompp'),
+                   Equal('modrm_byte', 0xe9),
+                   X87_noargs))),
+    Conj(Equal('opcode', 0xdb),
+         Disj(Conj(Mapping3('inst', 'modrm_opcode', 'x87_size',
+                            [('fild', 0, 'mem32int'),
+                             ('fisttp', 1, 'mem32int'),
+                             ('fist', 2, 'mem32int'),
+                             ('fistp', 3, 'mem32int'),
+                             # /4 is invalid.
+                             ('fld', 5, 'mem80real'),
+                             # /6 is invalid.
+                             ('fstp', 7, 'mem80real'),
+                             ]),
+                   X87_mem),
+              Conj(Mapping('inst', 'modrm_opcode',
+                           [('fcmovnb', 0),
+                            ('fcmovne', 1),
+                            ('fcmovnbe', 2),
+                            ('fcmovnu', 3),
+                            # /4 is used for X87_noargs.
+                            ('fucomi', 5),
+                            ('fcomi', 6),
+                            # /7 is invalid.
+                            ]),
+                   X87_reg, X87_acc_shown_second),
+              Conj(Mapping('inst', 'modrm_byte',
+                           [('fnclex', 0xe2),
+                            ('fninit', 0xe3),
+                            ]),
+                   X87_noargs))),
+    Conj(Equal('opcode', 0xdc),
+         Disj(Conj(Mapping('inst', 'modrm_opcode',
+                           [('fadd', 0),
+                            ('fmul', 1),
+                            ('fcom', 2),
+                            ('fcomp', 3),
+                            ('fsub', 4),
+                            ('fsubr', 5),
+                            ('fdiv', 6),
+                            ('fdivr', 7),
+                            ]),
+                   Equal('x87_size', 'mem64real'),
+                   X87_mem),
+              Conj(Mapping('inst', 'modrm_opcode',
+                           [('fadd', 0),
+                            ('fmul', 1),
+                            # 2 and 3 are reserved.
+                            ('fsub', 4),
+                            ('fsubr', 5),
+                            ('fdiv', 6),
+                            ('fdivr', 7),
+                            ]),
+                   X87_reg, X87_acc_shown_first))),
+    Conj(Equal('opcode', 0xdd),
+         Disj(Conj(Mapping3('inst', 'modrm_opcode', 'x87_size',
+                            [('fld', 0, 'mem64real'),
+                             ('fisttp', 1, 'mem64int'),
+                             ('fst', 2, 'mem64real'),
+                             ('fstp', 3, 'mem64real'),
+                             ('frstor', 4, 'mem98'),
+                             # /5 is invalid.
+                             ('fnsave', 6, 'mem98'),
+                             ('fnstsw', 7, 'mem16'),
+                             ]),
+                   X87_mem),
+              Conj(Mapping('inst', 'modrm_opcode',
+                           [('ffree', 0),
+                            # 1 is reserved.
+                            ('fst', 2),
+                            ('fstp', 3),
+                            ('fucom', 4),
+                            ('fucomp', 5),
+                            # 5 and 6 are invalid.
+                            ]),
+                   X87_reg, X87_acc_hidden))),
+    Conj(Equal('opcode', 0xde),
+         Disj(Conj(Mapping('inst', 'modrm_opcode',
+                           # This list is duplicated above for 0xda.
+                           [('fiadd', 0),
+                            ('fimul', 1),
+                            ('ficom', 2),
+                            ('ficomp', 3),
+                            ('fisub', 4),
+                            ('fisubr', 5),
+                            ('fidiv', 6),
+                            ('fidivr', 7),
+                            ]),
+                   Equal('x87_size', 'mem16int'),
+                   X87_mem),
+              Conj(Mapping('inst', 'modrm_opcode',
+                           [('faddp', 0),
+                            ('fmulp', 1),
+                            # 2 is reserved.
+                            # 3 contains fcompp.
+                            # The AMD doc's table has a mistake: it
+                            # has fsubp/fsubrp and fdivp/fdivrp the
+                            # wrong way around.
+                            ('fsubp', 4),
+                            ('fsubrp', 5),
+                            ('fdivp', 6),
+                            ('fdivrp', 7),
+                            ]),
+                   X87_reg, X87_acc_shown_first),
+              Conj(Equal('inst', 'fcompp'),
+                   Equal('modrm_byte', 0xd9),
+                   X87_noargs))),
+    Conj(Equal('opcode', 0xdf),
+         Disj(Conj(Mapping3('inst', 'modrm_opcode', 'x87_size',
+                            [('fild', 0, 'mem16int'),
+                             ('fisttp', 1, 'mem16int'),
+                             ('fist', 2, 'mem16int'),
+                             ('fistp', 3, 'mem16int'),
+                             ('fbld', 4, 'mem80dec'),
+                             ('fild', 5, 'mem64int'),
+                             ('fbstp', 6, 'mem80dec'),
+                             ('fistp', 7, 'mem64int'),
+                             ]),
+                   X87_mem),
+              Conj(Equal('modrm_byte', 0xe0),
+                   Equal('inst', 'fnstsw'),
+                   X87_reg_ax),
+              Conj(Equal('modrm_opcode', 5),
+                   Equal('inst', 'fucomip'),
+                   X87_reg, X87_acc_shown_second),
+              Conj(Equal('modrm_opcode', 6),
+                   Equal('inst', 'fcomip'),
+                   X87_reg, X87_acc_shown_second))),
+    )
+
 
 # We use the condition names that objdump's disasembler produces here,
 # although the alias names are more uniform.
@@ -480,6 +776,7 @@ OneByteOpcodes = Disj(
 
     ArithOpcodes,
     ShiftOpcodes,
+    X87Instructions,
 
     Conj(Disj(Conj(Equal('inst', 'inc'),  Equal('opcode_top', 0x40 >> 3)),
               Conj(Equal('inst', 'dec'),  Equal('opcode_top', 0x48 >> 3)),
