@@ -161,6 +161,12 @@ SibEncoding = Conj(
     Apply('sib_byte', CatBits, ['scale', 'indexreg', 'basereg'], [2,3,3]),
     )
 
+IntegerSuffix = \
+    Mapping3('has_data16_prefix', 'not_byte_op', 'inst_suffix',
+             [(0, 1, 'l'),
+              (1, 1, 'w'),
+              (0, 0, 'b')])
+
 def GetArgRegname(name_var, number_var):
   # The data16 prefix is not valid on byte operations.
   return Disj(Conj(Equal('has_data16_prefix', 0),
@@ -259,11 +265,11 @@ ModRM = Conj(Apply('modrm_byte', CatBits, ['mod', 'reg1', 'reg2'], [2,3,3]),
 ModRMDoubleArg = Conj(Equal('has_modrm_opcode', 0),
                       ForRange('reg1', reg_count),
                       GetArgRegname('reg1_name', 'reg1'),
-                      Equal('has_inst_suffix', 1),
+                      IntegerSuffix,
                       ModRM)
 ModRMSingleArg = Conj(Equal('has_modrm_opcode', 1),
                       EqualVar('reg1', 'modrm_opcode'),
-                      Equal('has_inst_suffix', 1),
+                      IntegerSuffix,
                       ModRM)
 
 # 'lea' uses a modrm byte but does not perform a memory access.  Other
@@ -286,21 +292,21 @@ MemoryAccessWithoutModRM = Conj(
     Equal('has_sib_byte', 0),
     Equal('displacement_bytes', 0),
     Equal('has_lock_prefix', 0),
-    Equal('has_inst_suffix', 1),
+    IntegerSuffix,
     Mapping('has_gs_prefix', 'mem_prefix',
             [(0, ''),
              (1, '%gs:')]))
 
 DataOperationWithoutModRM = Conj(
     NoModRM,
-    Equal('has_inst_suffix', 1))
+    IntegerSuffix)
 
 # This is for jumps that do no data operation, so it does not make
 # sense to add a 'l' or 'w' suffix or use a data16 prefix.
 NoDataOperation = Conj(
     NoModRM,
     Equal('has_data16_prefix', 0),
-    Equal('has_inst_suffix', 0))
+    Equal('inst_suffix', ''))
 
 DefaultImmediateSize = \
     Switch('has_data16_prefix',
@@ -566,7 +572,7 @@ OneByteOpcodes = Disj(
                 (1, Equal('inst', 'cbtw'))),
          NoModRM,
          Equal('immediate_bytes', 0),
-         Equal('has_inst_suffix', 0), # We add a suffix locally.
+         Equal('inst_suffix', ''), # We add a suffix locally.
          Equal('args', '')),
     Conj(Equal('opcode', 0x99),
          Switch('has_data16_prefix',
@@ -578,7 +584,7 @@ OneByteOpcodes = Disj(
                 (1, Equal('inst', 'cwtd'))),
          NoModRM,
          Equal('immediate_bytes', 0),
-         Equal('has_inst_suffix', 0), # We add a suffix locally.
+         Equal('inst_suffix', ''), # We add a suffix locally.
          Equal('args', '')),
 
     # objdump adds a suffix to make this 'calll' though arguably this
@@ -631,7 +637,7 @@ OneByteOpcodes = Disj(
     Conj(Equal('inst', 'jmp'),
          OpcodeLW(0xe9),
          NoModRM,
-         Equal('has_inst_suffix', 1),
+         IntegerSuffix,
          Mapping('has_data16_prefix', 'immediate_bytes',
                  [(0, 4),
                   (1, 2)]),
@@ -643,7 +649,7 @@ OneByteOpcodes = Disj(
          NoModRM,
          # objdump is a little inconsistent about whether jmp[lwb]
          # have a prefix when disassembled.
-         Equal('has_inst_suffix', 0),
+         Equal('inst_suffix', ''),
          Equal('immediate_bytes', 1),
          Equal('args', 'JUMP_DEST')),
 
@@ -730,7 +736,7 @@ TwoByteOpcodes = Disj(
          Equal('has_data16_prefix', 0),
          Apply('inst', Format, ['cond_name'], 'set%s'),
          # We are inlining Format_rm here in order to avoid setting
-         # has_inst_suffix=1, in order to match objdump's output which
+         # inst_suffix, in order to match objdump's output which
          # does not include a 'b' suffix.  This is a pain.
          # From Format_rm:
          Equal('immediate_bytes', 0),
@@ -738,7 +744,7 @@ TwoByteOpcodes = Disj(
          # From ModRMSingleArg:
          Equal('has_modrm_opcode', 1),
          EqualVar('reg1', 'modrm_opcode'),
-         Equal('has_inst_suffix', 0),
+         Equal('inst_suffix', ''),
          ModRM),
 
     # Bit test/set/clear operations
@@ -825,7 +831,7 @@ TwoByteOpcodes = Disj(
          Equal('modrm_opcode', 1),
          Equal('has_data16_prefix', 0),
          # We are inlining Format_rm here in order to avoid setting
-         # has_inst_suffix=1, since the suffix is the irregular '8b'.
+         # inst_suffix, since the suffix is the irregular '8b'.
          # This is a pain.
          # From Format_rm:
          Equal('immediate_bytes', 0),
@@ -833,7 +839,7 @@ TwoByteOpcodes = Disj(
          # From ModRMSingleArg:
          Equal('has_modrm_opcode', 1),
          EqualVar('reg1', 'modrm_opcode'),
-         Equal('has_inst_suffix', 0),
+         Equal('inst_suffix', ''),
          ModRM,
          ModRMMemoryOnly),
     )
@@ -876,12 +882,6 @@ lock_whitelist = (
 
 Instructions = Conj(
     AllOpcodes,
-    Switch('has_inst_suffix',
-           (0, Equal('inst_suffix', '')),
-           (1, Mapping3('has_data16_prefix', 'not_byte_op', 'inst_suffix',
-                        [(0, 1, 'l'),
-                         (1, 1, 'w'),
-                         (0, 0, 'b')]))),
     Switch('has_lock_prefix',
            (0, Equal('inst_lock_prefix', '')),
            (1, Conj(Equal('inst_lock_prefix', 'lock '),
