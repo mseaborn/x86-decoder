@@ -126,9 +126,40 @@ class Generator(object):
     return Time(lambda: trie.MergeMany(self.got_nodes))
 
 
+# Identify wildcard edges that were not present in the original
+# templates.  These can occur as a result of merging multiple tries
+# together.  We do this in a separate function so that the core trie
+# code can be independent of trie edge types.  This is cheap to do as
+# an extra pass, since the trie is not much bigger before.
+#
+# An alternative way to do this would be to expand out the 'XX' edges
+# to list all 256 possible bytes, but the 'XX' edges are more
+# convenient to handle in some cases, e.g. when enumerating all
+# instructions.
+def SimplifyWildcards(root):
+  @Memoize
+  def Rec(node):
+    dests = set(node.children.itervalues())
+    if len(dests) == 1 and len(set(node.children.iterkeys())) == 256:
+      keys = sorted(node.children.iterkeys())
+      assert keys == ['%02x' % c for c in range(256)], keys
+      children = {'XX': Rec(list(dests)[0])}
+    else:
+      children = node.children
+    return trie.MakeInterned(dict((key, Rec(value))
+                                  for key, value in children.iteritems()),
+                             node.accept)
+
+  return Rec(root)
+
+
 def Main():
   generator = Generator()
   root = generator.Run(constraint_gen.Encode)
+  print 'Node count before identifying extra wildcards: %i' % \
+      len(trie.GetAllNodes(root))
+  root = SimplifyWildcards(root)
+  print 'Node count: %i' % len(trie.GetAllNodes(root))
   trie.WriteToFile('new.trie', root)
 
 
