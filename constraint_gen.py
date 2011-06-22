@@ -1150,6 +1150,19 @@ TwoByteOpcodes = Disj(
          Equal('inst_suffix', ''),
          ModRM,
          ModRMMemoryOnly),
+    Conj(Equal('inst', 'bswap'),
+         ForRange('reg1', reg_count),
+         Equal('opcode2_top', 0xc8 >> 3),
+         Apply('opcode2', CatBits, ['opcode2_top', 'reg1'], (5, 3)),
+         GetArgRegname('args', 'reg1'),
+         Equal('not_byte_op', 1),
+         # bswap is undefined when used with the data16 prefix
+         # (because xchgw could be used for swapping bytes in a word
+         # instead), although objdump decodes such instructions.
+         Equal('has_data16_prefix', 0),
+         NoModRM,
+         Equal('inst_suffix', ''),
+         Equal('immediate_bytes', 0)),
     )
 
 def OptPrependByte(cond, byte_value, dest_var, src_var):
