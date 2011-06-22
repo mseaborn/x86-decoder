@@ -828,6 +828,12 @@ OneByteOpcodes = Disj(
          Equal('modrm_opcode', 0),
          Format_rm),
 
+    Conj(Equal('inst', 'leave'),
+         Equal('opcode', 0xc9),
+         DataOperationWithoutModRM,
+         Equal('not_byte_op', 1),
+         Equal('immediate_bytes', 0),
+         Equal('args', '')),
     Conj(Equal('inst', 'hlt'),
          Equal('opcode', 0xf4),
          NoDataOperation,
