@@ -828,6 +828,12 @@ OneByteOpcodes = Disj(
          Equal('modrm_opcode', 0),
          Format_rm),
 
+    # Note that assemblers and disassemblers treat 'fwait' as a prefix
+    # such that 'fwait; fnXXX' is a shorthand for 'fXXX'.  (For
+    # example, 'fwait; fnstenv ARG' can be written as 'fstenv ARG'.)
+    # This might cause cross-check tests to fail if these instructions
+    # are placed together.  Really, though, fwait is an instruction in
+    # its own right.
     Conj(Equal('inst', 'fwait'),
          Equal('opcode', 0x9b),
          NoDataOperation,
