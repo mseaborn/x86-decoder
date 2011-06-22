@@ -371,6 +371,14 @@ Format_rm = Conj(
     Equal('immediate_bytes', 0),
     ModRMSingleArg,
     EqualVar('args', 'rm_arg'))
+Format_rm_nosuffix = Conj(
+    Equal('immediate_bytes', 0),
+    # We are inlining ModRMSingleArg but without doing IntegerSuffix.
+    Equal('has_modrm_opcode', 1),
+    EqualVar('reg1', 'modrm_opcode'),
+    ModRM,
+    Equal('inst_suffix', ''),
+    EqualVar('args', 'rm_arg'))
 Format_jump_rm = Conj(
     Equal('immediate_bytes', 0),
     ModRMSingleArg,
@@ -1067,17 +1075,9 @@ TwoByteOpcodes = Disj(
          Equal('not_byte_op', 0),
          Equal('has_data16_prefix', 0),
          Apply('inst', Format, ['cond_name'], 'set%s'),
-         # We are inlining Format_rm here in order to avoid setting
-         # inst_suffix, in order to match objdump's output which
-         # does not include a 'b' suffix.  This is a pain.
-         # From Format_rm:
-         Equal('immediate_bytes', 0),
-         EqualVar('args', 'rm_arg'),
-         # From ModRMSingleArg:
-         Equal('has_modrm_opcode', 1),
-         EqualVar('reg1', 'modrm_opcode'),
-         Equal('inst_suffix', ''),
-         ModRM),
+         # Set inst_suffix to '' in order to match objdump's output
+         # which does not include a 'b' suffix.
+         Format_rm_nosuffix),
 
     # Bit test/set/clear operations
     Conj(Mapping('inst', 'opcode2',
@@ -1162,17 +1162,9 @@ TwoByteOpcodes = Disj(
          Equal('inst', 'cmpxchg8b'),
          Equal('modrm_opcode', 1),
          Equal('has_data16_prefix', 0),
-         # We are inlining Format_rm here in order to avoid setting
-         # inst_suffix, since the suffix is the irregular '8b'.
-         # This is a pain.
-         # From Format_rm:
-         Equal('immediate_bytes', 0),
-         EqualVar('args', 'rm_arg'),
-         # From ModRMSingleArg:
-         Equal('has_modrm_opcode', 1),
-         EqualVar('reg1', 'modrm_opcode'),
-         Equal('inst_suffix', ''),
-         ModRM,
+         # We set inst_suffix to '' although the suffix might be
+         # considered to be the irregular '8b'.
+         Format_rm_nosuffix,
          ModRMMemoryOnly),
     Conj(Equal('inst', 'bswap'),
          ForRange('reg1', reg_count),
@@ -1187,6 +1179,20 @@ TwoByteOpcodes = Disj(
          NoModRM,
          Equal('inst_suffix', ''),
          Equal('immediate_bytes', 0)),
+
+    # SSE
+    Conj(Equal('opcode2', 0xae),
+         Equal('inst', 'ldmxcsr'),
+         Equal('modrm_opcode', 2),
+         Equal('has_data16_prefix', 0),
+         Format_rm_nosuffix,
+         ModRMMemoryOnly),
+    Conj(Equal('opcode2', 0xae),
+         Equal('inst', 'stmxcsr'),
+         Equal('modrm_opcode', 3),
+         Equal('has_data16_prefix', 0),
+         Format_rm_nosuffix,
+         ModRMMemoryOnly),
     )
 
 def OptPrependByte(cond, byte_value, dest_var, src_var):
