@@ -844,9 +844,17 @@ OneByteOpcodes = Disj(
          NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
+    # 'nop' is really 'xchg %eax, %eax'.
     Conj(Equal('inst', 'nop'),
          Equal('opcode', 0x90),
          NoDataOperation,
+         Equal('immediate_bytes', 0),
+         Equal('args', '')),
+    # 'pause' is really 'rep nop'.
+    Conj(Equal('inst', 'pause'),
+         Equal('opcode', 0x90),
+         NoDataOperation,
+         Equal('has_rep_prefix', 1),
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     # 'xchg %eax, %reg'
@@ -1212,7 +1220,9 @@ Instructions = Conj(
            (1, Conj(Equal('inst_rep_prefix', 'rep '),
                     InSet('inst', ['movs', 'stos', 'lods']))),
            (1, Conj(Equal('inst_rep_prefix', 'repz '),
-                    InSet('inst', ['cmps', 'scas'])))),
+                    InSet('inst', ['cmps', 'scas']))),
+           (1, Conj(Equal('inst_rep_prefix', ''),
+                    Equal('inst', 'pause')))),
     Switch('has_repnz_prefix',
            (0, Equal('inst_repnz_prefix', '')),
            (1, Conj(Equal('inst_repnz_prefix', 'repnz '),
