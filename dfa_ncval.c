@@ -143,6 +143,17 @@ int ValidateFile(const char *filename) {
 }
 
 int main(int argc, char **argv) {
-  assert(argc == 2);
-  return ValidateFile(argv[1]);
+  int index;
+  if (argc == 1) {
+    printf("%s: no input files\n", argv[0]);
+  }
+  for (index = 1; index < argc; index++) {
+    const char *filename = argv[index];
+    int rc = ValidateFile(filename);
+    if (rc != 0) {
+      printf("file '%s' failed validation\n", filename);
+      return 1;
+    }
+  }
+  return 0;
 }
