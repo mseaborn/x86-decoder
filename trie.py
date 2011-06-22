@@ -3,6 +3,8 @@ import sys
 import time
 import weakref
 
+import memoize
+
 
 class Trie(object):
 
@@ -164,6 +166,22 @@ def WriteToFile(output_filename, root):
   fh = open(output_filename, 'w')
   fh.write(repr(info))
   fh.close()
+
+
+def TrieFromDict(trie_data):
+  @memoize.Memoize
+  def MakeNode(node_id):
+    children = dict(
+        (key, MakeNode(child_id))
+        for key, child_id in trie_data['map'][node_id].iteritems())
+    return MakeInterned(children, trie_data['accepts'][node_id])
+
+  return MakeNode(trie_data['start'])
+
+
+def TrieFromFile(filename):
+  trie_data = eval(open(filename, 'r').read(), {})
+  return TrieFromDict(trie_data)
 
 
 def Dump():
