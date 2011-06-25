@@ -44,6 +44,9 @@ class Context(object):
     if var in self.vars:
       return self.vars[var] not in excl_list
     old_rng = self.varrs.get(var, ANY)
+    if old_rng is ANY:
+      raise AssertionError(
+          'Cannot apply a negative range to unconstrained variable %r' % var)
     new_rng = old_rng.difference(excl_list)
     if len(new_rng) == len(old_rng):
       # No change: return early without running any constraints.
