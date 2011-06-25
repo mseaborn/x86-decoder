@@ -60,25 +60,28 @@ def Merge(node1, node2):
 
 
 # Assumes all the input nodes are interned.
-def MergeMany(nodes):
+def MergeMany(nodes, merge_accept_types):
   if len(nodes) == 1:
     return list(nodes)[0]
   if len(nodes) == 0:
     return EmptyNode
   children = {}
   keys = set()
-  accept = False
+  accept_types = set()
   for node in nodes:
     keys.update(node.children.iterkeys())
-    if node.accept:
-      accept = True
+    accept_types.add(node.accept)
   for key in keys:
     cs = set()
     for node in nodes:
       child = node.children.get(key, EmptyNode)
       if child != EmptyNode:
         cs.add(child)
-    children[key] = MergeMany(cs)
+    children[key] = MergeMany(cs, merge_accept_types)
+  if len(accept_types) == 1:
+    accept = list(accept_types)[0]
+  else:
+    accept = merge_accept_types(accept_types)
   return MakeInterned(children, accept)
 
 

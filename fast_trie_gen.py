@@ -76,7 +76,11 @@ def FollowBytes(ctx, var):
 @Memoize
 def TrieOfList(bytes, node):
   for byte in reversed(bytes):
-    node = trie.MakeInterned({byte: node}, False)
+    if byte == 'XX':
+      children = dict((FormatByte(x), node) for x in xrange(256))
+    else:
+      children = {byte: node}
+    node = trie.MakeInterned(children, False)
   return node
 
 
@@ -86,6 +90,13 @@ def Time(func):
   t1 = time.time()
   print '%s took %fs' % (func, t1 - t0)
   return r
+
+
+def MergeAcceptTypes(accept_types):
+  if accept_types == set(['normal_inst', False]):
+    return 'superinst_start'
+  else:
+    raise AssertionError('Cannot merge %r' % accept_types)
 
 
 class Generator(object):
@@ -103,14 +114,18 @@ class Generator(object):
     self.count += 1
     time_now = time.time()
     if time_now > self.next_time:
-      taken = time_now - self.start_time
-      print '%i templates in %.1fs; %.2fs template/sec' % (
-          self.count, taken, self.count / taken)
       self.next_time += 1
+      self.PrintStat()
+
+  def PrintStat(self):
+    taken = time.time() - self.start_time
+    print '%i templates in %.1fs; %.2fs template/sec' % (
+        self.count, taken, self.count / taken)
 
   def Run(self, term):
     term(self.ctx, self.Add)
-    return Time(lambda: trie.MergeMany(self.got_nodes))
+    self.PrintStat()
+    return Time(lambda: trie.MergeMany(self.got_nodes, MergeAcceptTypes))
 
 
 # Identify wildcard edges that were not present in the original
@@ -123,6 +138,9 @@ class Generator(object):
 # to list all 256 possible bytes, but the 'XX' edges are more
 # convenient to handle in some cases, e.g. when enumerating all
 # instructions.
+#
+# TODO: This is rendered unnecessary by the expanding-out done in
+# TrieOfList().
 def SimplifyWildcards(root):
   @Memoize
   def Rec(node):
@@ -140,8 +158,24 @@ def SimplifyWildcards(root):
   return Rec(root)
 
 
+def TrieOfBytes(bytes, tail):
+  return TrieOfList(tuple(FormatByte(byte) for byte in bytes), tail)
+
+
+def SandboxedJumps():
+  tail = trie.MakeInterned({}, 'normal_inst')
+  for reg in range(8):
+    yield TrieOfBytes([0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
+                       0xff, 0xe0 | reg],       # jmp *%reg
+                      tail)
+    yield TrieOfBytes([0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
+                       0xff, 0xd0 | reg],       # call *%reg
+                      tail)
+
+
 def Main():
   generator = Generator()
+  generator.got_nodes.extend(SandboxedJumps())
   root = generator.Run(constraint_gen.NaClEncode)
   print 'Node count before identifying extra wildcards: %i' % \
       len(trie.GetAllNodes(root))

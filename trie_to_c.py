@@ -21,12 +21,13 @@ def Main():
   accept_types = sorted(set(node.accept for node in nodes
                             if node.accept != False))
   for accept_type in accept_types:
-    accepters = [node_to_id[node] for node in nodes
+    acceptors = [node_to_id[node] for node in nodes
                  if node.accept == accept_type]
-    assert len(accepters) == 1, accept_type
+    print 'Type %r has %i acceptors' % (accept_type, len(acceptors))
+    expr = ' || '.join('node_id == %i' % node_id for node_id in acceptors)
     out.write('static inline int trie_accepts_%s(int node_id) '
-              '{\n  return node_id == %i;\n}\n\n'
-              % (accept_type, accepters[0]))
+              '{\n  return %s;\n}\n\n'
+              % (accept_type, expr))
 
   out.write('static const uint8_t trie_table[][256] = {\n')
   for node in nodes:

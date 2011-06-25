@@ -112,6 +112,42 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
         RelativeJump(((int16_t *) ptr)[-1]);
       } else if (trie_accepts_jump_rel4(state)) {
         RelativeJump(((int32_t *) ptr)[-1]);
+      } else if (trie_accepts_superinst_start(state)) {
+        /* We've reached the end of a valid instruction, but it may be
+           the start of a superinstruction.  Try reading more bytes to
+           see if we reach an accepting state.  If we don't, we
+           backtrack.
+           The backtracking should not be too expensive because we
+           don't expect to see the mask instruction 'and $~31, %reg'
+           on its own very often. */
+        int bundle_offset2 = bundle_offset;
+        int state2 = state;
+        uint8_t *ptr2 = ptr;
+        while (bundle_offset2 < bundle_size) {
+          state2 = trie_table[state2][*ptr2];
+          if (state2 == 0) {
+            /* Backtrack early.  It is not essential to catch this
+               case, but otherwise we will scan the rest of the
+               bundle. */
+            break;
+          }
+          ptr2++;
+          bundle_offset2++;
+          if (trie_accepts_normal_inst(state2)) {
+            /* Commit to the superinstruction. */
+            bundle_offset = bundle_offset2;
+            ptr = ptr2;
+            break;
+          }
+        }
+        /* When we've reached here we have either:
+            - backtracked (by reaching a reject state or by reaching the
+              end of the bundle), in which case we forget
+              state2/ptr2/bundle_offset2; or
+            - committed to the superinstruction.
+           Either way we record the end of the instruction that we reached. */
+        mask |= 1 << (bundle_offset - 1);
+        state = trie_start;
       }
     }
     *mask_dest++ = mask;

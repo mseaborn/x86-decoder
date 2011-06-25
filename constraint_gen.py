@@ -1344,12 +1344,11 @@ NaClEncode = Conj(
               (0, 0, 1),
               (0, 1, 0),
               (1, 0, 0)]),
+    # We exclude 'modrm_jump' because unmasked indirect jumps are not allowed.
     Switch('jump_type',
            ('not_jump', Equal('accept_type', 'normal_inst')),
            ('relative_jump',
-            Apply('accept_type', Format, ['immediate_bytes'], 'jump_rel%i')),
-           # TODO: Enforce jump masking and remove this.
-           ('modrm_jump', Equal('accept_type', 'normal_inst'))),
+            Apply('accept_type', Format, ['immediate_bytes'], 'jump_rel%i'))),
     )
 
 

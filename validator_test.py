@@ -14,7 +14,7 @@ test_cases = []
 
 def TestCase(asm, accept):
   def Func():
-    print '* test'
+    print '* test %r' % asm
     full_asm = asm + '\n.p2align 5, 0x90\n'
     WriteFile('tmp.S', full_asm)
     subprocess.check_call(['gcc', '-m32', '-c', 'tmp.S', '-o', 'tmp.o'])
@@ -48,12 +48,6 @@ movl $0x12345678, 0x12345678(%eax, %ebx, 4)
 movl $0x12345678, 0x12345678(%eax, %ebx, 4)
 """)
 
-# TODO: these should be rejected.
-TestCase(accept=True, asm='jmp *%eax')
-TestCase(accept=True, asm='jmp *(%eax)')
-TestCase(accept=True, asm='call *%eax')
-TestCase(accept=True, asm='call *(%eax)')
-
 # Forwards and backwards jumps.
 TestCase(accept=True, asm="""
 nop
@@ -83,6 +77,37 @@ TestCase(accept=False, asm="""
 label:
 movl $0x12345678, 0x12345678(%eax, %ebx, 4)
 jmp label + 1
+""")
+
+
+# Unmasked indirect jumps are disallowed.
+TestCase(accept=False, asm='jmp *%eax')
+TestCase(accept=False, asm='jmp *(%eax)')
+TestCase(accept=False, asm='call *%eax')
+TestCase(accept=False, asm='call *(%eax)')
+
+# Masking instructions on their own are allowed.
+TestCase(accept=True, asm='and $~31, %eax')
+TestCase(accept=True, asm='and $~31, %ebx')
+
+# Masked indirect jumps are allowed.
+TestCase(accept=True, asm='and $~31, %eax; jmp *%eax')
+TestCase(accept=True, asm='and $~31, %ebx; call *%ebx')
+
+# The registers must match up for the mask and the jump.
+TestCase(accept=False, asm='and $~31, %eax; jmp *%ebx')
+TestCase(accept=False, asm='and $~31, %ebx; call *%eax')
+
+# The mask and the jump must be adjacent.
+TestCase(accept=False, asm='and $~31, %eax; nop; jmp *%eax')
+TestCase(accept=False, asm='and $~31, %ebx; nop; call *%ebx')
+
+# Jumping into the middle of the superinstruction must be rejected.
+TestCase(accept=False, asm="""
+and $~31, %eax
+label:
+jmp *%eax
+jmp label
 """)
 
 
