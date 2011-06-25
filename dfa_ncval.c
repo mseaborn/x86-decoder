@@ -83,6 +83,8 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
 
       /* TODO: Don't use a nested function. */
       void RelativeJump(int32_t relative) {
+        /* We add 1 because i has not yet been incremented to the end
+           of the instruction. */
         uint32_t jump_dest = offset + i + 1 + relative;
         if ((jump_dest & bundle_mask) != 0) {
           /* Either '>' or '>=' work here since size is bundle-aligned
@@ -91,6 +93,9 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
             printf("direct jump out of range: %x\n", jump_dest);
             result = 1;
           } else {
+            /* We subtract 1 because the bit indexes in valid_targets
+               are off by 1.  We do not need to record the starts of
+               bundles as valid targets. */
             BitmapSetBit(jump_dests, jump_dest - 1);
           }
         }
