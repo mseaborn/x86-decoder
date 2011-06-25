@@ -389,6 +389,8 @@ Format_imm_eax = Conj(
     GetAccArgRegname,
     Apply('args', Format, ['immediate_desc', 'acc_regname'], '%s, %s'))
 
+NotJump = Equal('jump_type', 'not_jump')
+
 
 X87Common = Conj(
     Equal('has_modrm_opcode', 1),
@@ -785,16 +787,18 @@ ShiftOpcodes = Conj(
              ]))
 
 OneByteOpcodes = Disj(
-    MovInstructions,
-    ArithOpcodes,
-    ShiftOpcodes,
-    X87Instructions,
+    Conj(NotJump,
+         Disj(MovInstructions,
+              ArithOpcodes,
+              ShiftOpcodes,
+              X87Instructions)),
 
     Conj(Disj(Conj(Equal('inst', 'inc'),  Equal('opcode_top', 0x40 >> 3)),
               Conj(Equal('inst', 'dec'),  Equal('opcode_top', 0x48 >> 3)),
               Conj(Equal('inst', 'push'), Equal('opcode_top', 0x50 >> 3)),
               Conj(Equal('inst', 'pop'),  Equal('opcode_top', 0x58 >> 3)),
               ),
+         NotJump,
          ForRange('reg', reg_count),
          GetArgRegname('reg_name', 'reg'),
          Apply('opcode', CatBits, ['opcode_top', 'reg'], (5, 3)),
@@ -805,31 +809,47 @@ OneByteOpcodes = Disj(
 
     Conj(Equal('inst', 'push'),
          OpcodeLW(0x68),
+         NotJump,
          DataOperationWithoutModRM,
          DefaultImmediateSize,
          EqualVar('args', 'immediate_desc')),
     Conj(Equal('inst', 'push'),
          OpcodeLW(0x6a),
+         NotJump,
          DataOperationWithoutModRM,
          Equal('immediate_bytes', 1),
          Equal('args', '$VALUE8')),
 
-    Conj(Equal('inst', 'imul'), OpcodeLW(0x69), Format_imm_rm_reg),
-    Conj(Equal('inst', 'imul'), OpcodeLW(0x6b), Format_imm8_rm_reg),
+    Conj(Equal('inst', 'imul'),
+         OpcodeLW(0x69),
+         NotJump,
+         Format_imm_rm_reg),
+    Conj(Equal('inst', 'imul'),
+         OpcodeLW(0x6b),
+         NotJump,
+         Format_imm8_rm_reg),
 
     # Short (8-bit offset) jumps
     Conj(Equal('opcode_top', 0x70 >> 4),
          Apply('opcode', CatBits, ['opcode_top', 'cond'], [4, 4]),
+         Equal('jump_type', 'relative_jump'),
          ConditionCodes,
          NoDataOperation,
          Equal('immediate_bytes', 1),
          Equal('args', 'JUMP_DEST'),
          Apply('inst', Format, ['cond_name'], 'j%s')),
 
-    Conj(Equal('inst', 'test'), OpcodePair(0x84), Format_reg_rm),
-    Conj(Equal('inst', 'xchg'), OpcodePair(0x86), Format_reg_rm),
+    Conj(Equal('inst', 'test'),
+         OpcodePair(0x84),
+         NotJump,
+         Format_reg_rm),
+    Conj(Equal('inst', 'xchg'),
+         OpcodePair(0x86),
+         NotJump,
+         Format_reg_rm),
     Conj(Equal('inst', 'lea'),
          OpcodeLW(0x8d),
+         NotJump,
          Format_rm_reg,
          # Disallow instructions of the form 'leal %reg, %reg'.
          # We require a modrm byte that looks like a memory access,
@@ -837,6 +857,7 @@ OneByteOpcodes = Disj(
          ModRMMemoryOnly),
     Conj(Equal('inst', 'pop'),
          OpcodeLW(0x8f),
+         NotJump,
          Equal('modrm_opcode', 0),
          Format_rm),
 
@@ -848,39 +869,46 @@ OneByteOpcodes = Disj(
     # its own right.
     Conj(Equal('inst', 'fwait'),
          Equal('opcode', 0x9b),
+         NotJump,
          NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     Conj(Equal('inst', 'sahf'),
          Equal('opcode', 0x9e),
+         NotJump,
          NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     Conj(Equal('inst', 'lahf'),
          Equal('opcode', 0x9f),
+         NotJump,
          NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     Conj(Equal('inst', 'leave'),
          Equal('opcode', 0xc9),
+         NotJump,
          DataOperationWithoutModRM,
          Equal('not_byte_op', 1),
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     Conj(Equal('inst', 'hlt'),
          Equal('opcode', 0xf4),
+         NotJump,
          NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     # 'nop' is really 'xchg %eax, %eax'.
     Conj(Equal('inst', 'nop'),
          Equal('opcode', 0x90),
+         NotJump,
          NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
     # 'pause' is really 'rep nop'.
     Conj(Equal('inst', 'pause'),
          Equal('opcode', 0x90),
+         NotJump,
          NoDataOperation,
          Equal('has_rep_prefix', 1),
          Equal('immediate_bytes', 0),
@@ -901,6 +929,7 @@ OneByteOpcodes = Disj(
          GetAccArgRegname,
          Equal('opcode_top', 0x90 >> 3),
          Apply('opcode', CatBits, ['opcode_top', 'reg1'], (5, 3)),
+         NotJump,
          Equal('not_byte_op', 1),
          DataOperationWithoutModRM,
          Equal('immediate_bytes', 0),
@@ -914,6 +943,7 @@ OneByteOpcodes = Disj(
                 # "Convert byte to word".  'cbw' in Intel syntax.
                 # Sign-extends %al into %ax.
                 (1, Equal('inst', 'cbtw'))),
+         NotJump,
          NoModRM,
          Equal('immediate_bytes', 0),
          Equal('inst_suffix', ''), # We add a suffix locally.
@@ -926,6 +956,7 @@ OneByteOpcodes = Disj(
                 # "Convert word to double word".  'cwd' in Intel syntax.
                 # Fills %dx with the top bit of %ax.
                 (1, Equal('inst', 'cwtd'))),
+         NotJump,
          NoModRM,
          Equal('immediate_bytes', 0),
          Equal('inst_suffix', ''), # We add a suffix locally.
@@ -935,6 +966,7 @@ OneByteOpcodes = Disj(
     # is superfluous.
     Conj(Equal('inst', 'calll'),
          Equal('opcode', 0xe8),
+         Equal('jump_type', 'relative_jump'),
          NoDataOperation,
          Equal('immediate_bytes', 4),
          Equal('args', 'JUMP_DEST')),
@@ -963,16 +995,21 @@ OneByteOpcodes = Disj(
                    GetAccArgRegname,
                    Equal('src_arg', '%es:(%edi)'),
                    EqualVar('dest_arg', 'acc_regname'))),
+         NotJump,
          Apply('args', Format, ['src_arg', 'dest_arg'], '%s, %s'),
          DataOperationWithoutModRM,
          Equal('immediate_bytes', 0)),
 
-    Conj(Equal('inst', 'test'), OpcodePair(0xa8), Format_imm_eax),
+    Conj(Equal('inst', 'test'),
+         OpcodePair(0xa8),
+         NotJump,
+         Format_imm_eax),
 
     # Short (8-bit offset) jump.
     # We do not handle 'jcxz' because it uses an addr16 prefix.
     Conj(Equal('inst', 'jecxz'),
          Equal('opcode', 0xe3),
+         Equal('jump_type', 'relative_jump'),
          NoDataOperation,
          Equal('immediate_bytes', 1),
          Equal('args', 'JUMP_DEST')),
@@ -980,6 +1017,7 @@ OneByteOpcodes = Disj(
     # Unconditional jump.
     Conj(Equal('inst', 'jmp'),
          OpcodeLW(0xe9),
+         Equal('jump_type', 'relative_jump'),
          NoModRM,
          IntegerSuffix,
          Mapping('has_data16_prefix', 'immediate_bytes',
@@ -988,6 +1026,7 @@ OneByteOpcodes = Disj(
          Equal('args', 'JUMP_DEST')),
     Conj(Equal('inst', 'jmp'),
          Equal('opcode', 0xeb),
+         Equal('jump_type', 'relative_jump'),
          Equal('not_byte_op', 0),
          Equal('has_data16_prefix', 0),
          NoModRM,
@@ -1004,12 +1043,14 @@ OneByteOpcodes = Disj(
                   ('cld', 0xfc), # Clear direction flag
                   ('std', 0xfd), # Set direction flag
                   ]),
+         NotJump,
          NoDataOperation,
          Equal('immediate_bytes', 0),
          Equal('args', '')),
 
     # Group 3
     Conj(OpcodePair(0xf6),
+         NotJump,
          Disj(Conj(Equal('inst', 'test'),
                    Equal('modrm_opcode', 0),
                    Format_imm_rm),
@@ -1028,35 +1069,40 @@ OneByteOpcodes = Disj(
          Mapping('inst', 'modrm_opcode',
                  [('inc', 0),
                   ('dec', 1)]),
+         NotJump,
          Equal('not_byte_op', 0),
          Format_rm),
     # Group 5
     Conj(Equal('opcode', 0xff),
-         Mapping3('inst', 'modrm_opcode', 'is_indirect_jump',
-                 [('inc', 0, 0),
-                  ('dec', 1, 0),
-                  ('call', 2, 1),
-                  # Leave out lcall/ljmp for now because 'ljmp *%eax'
-                  # is not a valid instruction (ljmp reads multiple
-                  # words from memory) and we would need to add
-                  # ModRMMemoryOnly.
-                  #('lcall', 3, 1),
-                  ('jmp', 4, 1),
-                  #('ljmp', 5, 1),
-                  ('push', 6, 0)]),
          Equal('not_byte_op', 1),
-         # Indirect jumps differ syntactically in order to distinguish
-         # 'jmp 0x1234' (jump to address) from 'jmp *0x1234' (jump to
-         # address fetched from memory).
-         Switch('is_indirect_jump',
-                (0, Format_rm),
-                (1, Format_jump_rm))),
+         # 2, 3, 4, 5 are types of jump.
+         # 0, 1 and 6 are data operations.
+         # 7 would be 'pop' but is invalid.
+         Disj(Conj(Format_rm,
+                   NotJump,
+                   Mapping('inst', 'modrm_opcode',
+                           [('inc', 0),
+                            ('dec', 1),
+                            ('push', 6)])),
+              # Leave out lcall/ljmp for now because 'ljmp *%eax' is
+              # not a valid instruction (ljmp reads multiple words
+              # from memory) and we would need to add ModRMMemoryOnly.
+              # Also, we do not allow them at all in NaCl.
+              Conj(Format_jump_rm,
+                   Equal('jump_type', 'modrm_jump'),
+                   Mapping('inst', 'modrm_opcode',
+                           [('call', 2),
+                            #('lcall', 3),
+                            ('jmp', 4),
+                            #('ljmp', 5),
+                            ])))),
     )
 
 TwoByteOpcodes = Disj(
     # Conditional move.  Added in P6.
     Conj(Equal('opcode2_top', 0x40 >> 4),
          Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
+         NotJump,
          ConditionCodes,
          Equal('not_byte_op', 1),
          Format_rm_reg,
@@ -1065,6 +1111,7 @@ TwoByteOpcodes = Disj(
     # 4-byte offset jumps.
     Conj(Equal('opcode2_top', 0x80 >> 4),
          Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
+         Equal('jump_type', 'relative_jump'),
          ConditionCodes,
          NoDataOperation,
          Equal('immediate_bytes', 4),
@@ -1074,6 +1121,7 @@ TwoByteOpcodes = Disj(
     # Byte set on condition
     Conj(Equal('opcode2_top', 0x90 >> 4),
          Apply('opcode2', CatBits, ['opcode2_top', 'cond'], [4, 4]),
+         NotJump,
          ConditionCodes,
          Equal('modrm_opcode', 0),
          Equal('not_byte_op', 0),
@@ -1089,6 +1137,7 @@ TwoByteOpcodes = Disj(
                   ('bts', 0xab),
                   ('btr', 0xb3),
                   ('btc', 0xbb)]),
+         NotJump,
          Equal('not_byte_op', 1),
          Format_reg_rm),
     # Group 8
@@ -1099,32 +1148,38 @@ TwoByteOpcodes = Disj(
                   ('bts', 5),
                   ('btr', 6),
                   ('btc', 7)]),
+         NotJump,
          Format_imm8_rm),
 
     # Bit shift left/right
     Conj(Mapping('inst', 'opcode2',
                  [('shld', 0xa4),
                   ('shrd', 0xac)]),
+         NotJump,
          Equal('not_byte_op', 1),
          Format_imm8_reg_rm),
     Conj(Mapping('inst', 'opcode2',
                  [('shld', 0xa5),
                   ('shrd', 0xad)]),
+         NotJump,
          Equal('not_byte_op', 1),
          Format_cl_reg_rm),
 
     Conj(Equal('opcode2', 0xaf),
          Equal('inst', 'imul'),
+         NotJump,
          Equal('not_byte_op', 1),
          Format_rm_reg),
 
     # Bit scan forwards/reverse
     Conj(Equal('opcode2', 0xbc),
          Equal('inst', 'bsf'),
+         NotJump,
          Equal('not_byte_op', 1),
          Format_rm_reg),
     Conj(Equal('opcode2', 0xbd),
          Equal('inst', 'bsr'),
+         NotJump,
          Equal('not_byte_op', 1),
          Format_rm_reg),
 
@@ -1141,6 +1196,7 @@ TwoByteOpcodes = Disj(
          # 'movzx' is the Intel name.
          # The ATT names are 'movzbl', 'movzwl', 'movzbw'.
          Equal('inst', 'TODO movzx_'),
+         NotJump,
          Format_rm_reg),
     Conj(Mapping('opcode2', 'not_byte_op',
                  [(0xbe, 1),
@@ -1149,6 +1205,7 @@ TwoByteOpcodes = Disj(
          # 'movsx' is the Intel name.
          # The ATT names are 'movsbl', 'movswl', 'movsbw'.
          Equal('inst', 'TODO movsx_'),
+         NotJump,
          Format_rm_reg),
 
     # Added in the 486.
@@ -1156,14 +1213,17 @@ TwoByteOpcodes = Disj(
                  [(0xb0, 0),
                   (0xb1, 1)]),
          Equal('inst', 'cmpxchg'),
+         NotJump,
          Format_reg_rm),
     Conj(Mapping('opcode2', 'not_byte_op',
                  [(0xc0, 0),
                   (0xc1, 1)]),
          Equal('inst', 'xadd'),
+         NotJump,
          Format_reg_rm),
     Conj(Equal('opcode2', 0xc7),
          Equal('inst', 'cmpxchg8b'),
+         NotJump,
          Equal('modrm_opcode', 1),
          Equal('has_data16_prefix', 0),
          # We set inst_suffix to '' although the suffix might be
@@ -1174,6 +1234,7 @@ TwoByteOpcodes = Disj(
          ForRange('reg1', reg_count),
          Equal('opcode2_top', 0xc8 >> 3),
          Apply('opcode2', CatBits, ['opcode2_top', 'reg1'], (5, 3)),
+         NotJump,
          GetArgRegname('args', 'reg1'),
          Equal('not_byte_op', 1),
          # bswap is undefined when used with the data16 prefix
@@ -1187,12 +1248,14 @@ TwoByteOpcodes = Disj(
     # SSE
     Conj(Equal('opcode2', 0xae),
          Equal('inst', 'ldmxcsr'),
+         NotJump,
          Equal('modrm_opcode', 2),
          Equal('has_data16_prefix', 0),
          Format_rm_nosuffix,
          ModRMMemoryOnly),
     Conj(Equal('opcode2', 0xae),
          Equal('inst', 'stmxcsr'),
+         NotJump,
          Equal('modrm_opcode', 3),
          Equal('has_data16_prefix', 0),
          Format_rm_nosuffix,
