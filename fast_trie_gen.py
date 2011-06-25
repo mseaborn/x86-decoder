@@ -62,7 +62,8 @@ def FollowByte(ctx, var, tail_trie):
 
 def FollowBytes(ctx, var):
   if var in ctx.vars:
-    return TrieOfList(tuple(ctx.vars[var]))
+    tail = trie.MakeInterned({}, ctx.vars['accept_type'])
+    return TrieOfList(tuple(ctx.vars[var]), tail)
   for con in ctx.waiting.get(var, []):
     if isinstance(con, logic.EqualVarConstraint) and con.var1 == var:
       return FollowBytes(ctx, con.var2)
@@ -73,8 +74,7 @@ def FollowBytes(ctx, var):
 
 
 @Memoize
-def TrieOfList(bytes):
-  node = trie.AcceptNode
+def TrieOfList(bytes, node):
   for byte in reversed(bytes):
     node = trie.MakeInterned({byte: node}, False)
   return node
@@ -142,7 +142,7 @@ def SimplifyWildcards(root):
 
 def Main():
   generator = Generator()
-  root = generator.Run(constraint_gen.Encode)
+  root = generator.Run(constraint_gen.NaClEncode)
   print 'Node count before identifying extra wildcards: %i' % \
       len(trie.GetAllNodes(root))
   root = SimplifyWildcards(root)

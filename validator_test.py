@@ -54,6 +54,37 @@ TestCase(accept=True, asm='jmp *(%eax)')
 TestCase(accept=True, asm='call *%eax')
 TestCase(accept=True, asm='call *(%eax)')
 
+# Forwards and backwards jumps.
+TestCase(accept=True, asm="""
+nop
+jmp label2
+label1:
+jmp label1
+jmp label1
+label2:
+jmp label1
+""")
+
+# Out-of-range unaligned jump.
+TestCase(accept=False, asm="""
+label:
+jmp label - 1
+""")
+
+# Out-of-range unaligned jump.
+TestCase(accept=False, asm="""
+jmp label + 1
+.p2align 5
+label:
+""")
+
+# Jump into instruction.
+TestCase(accept=False, asm="""
+label:
+movl $0x12345678, 0x12345678(%eax, %ebx, 4)
+jmp label + 1
+""")
+
 
 def Main():
   for test_case in test_cases:

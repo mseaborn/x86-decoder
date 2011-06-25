@@ -1335,6 +1335,24 @@ Encode = Conj(Instructions, ConcatBytes)
 Decode = Conj(ConcatBytes, Instructions)
 
 
+NaClEncode = Conj(
+    Encode,
+    # NaCl allows at most one instruction prefix, because of worries
+    # about processor bugs.
+    Mapping3('has_gs_prefix', 'has_data16_prefix', 'has_lock_prefix',
+             [(0, 0, 0),
+              (0, 0, 1),
+              (0, 1, 0),
+              (1, 0, 0)]),
+    Switch('jump_type',
+           ('not_jump', Equal('accept_type', 'normal_inst')),
+           ('relative_jump',
+            Apply('accept_type', Format, ['immediate_bytes'], 'jump_rel%i')),
+           # TODO: Enforce jump masking and remove this.
+           ('modrm_jump', Equal('accept_type', 'normal_inst'))),
+    )
+
+
 # Test decoding an instruction.
 def TestInstruction(bytes, desc):
   decoded = GetAll(Conj(Equal('bytes', bytes.split(' ')), Decode))

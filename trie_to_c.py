@@ -18,11 +18,15 @@ def Main():
 
   out.write('static const int trie_start = %i;\n\n' % node_to_id[root_node])
 
-  accepters = [node_to_id[node] for node in nodes if node.accept]
-  assert len(accepters) == 1
-  out.write('static inline int trie_accepts(int node_id) '
-            '{\n  return node_id == %i;\n}\n\n'
-            % accepters[0])
+  accept_types = sorted(set(node.accept for node in nodes
+                            if node.accept != False))
+  for accept_type in accept_types:
+    accepters = [node_to_id[node] for node in nodes
+                 if node.accept == accept_type]
+    assert len(accepters) == 1, accept_type
+    out.write('static inline int trie_accepts_%s(int node_id) '
+              '{\n  return node_id == %i;\n}\n\n'
+              % (accept_type, accepters[0]))
 
   out.write('static const uint8_t trie_table[][256] = {\n')
   for node in nodes:

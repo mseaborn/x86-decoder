@@ -39,10 +39,29 @@ static void CheckBounds(unsigned char *data, size_t data_size,
   assert((unsigned char *) ptr + inside_size <= data + data_size);
 }
 
+int CheckJumpTargets(uint8_t *valid_targets, uint8_t *jump_dests,
+                     size_t size) {
+  int i;
+  for (i = 0; i < size / 32; i++) {
+    uint32_t jump_dest_mask = ((uint32_t *) jump_dests)[i];
+    uint32_t valid_target_mask = ((uint32_t *) valid_targets)[i];
+    if ((jump_dest_mask & ~valid_target_mask) != 0) {
+      printf("bad jump to around %x\n", i * sizeof(uint32_t));
+      return 1;
+    }
+  }
+  return 0;
+}
+
 int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
-  assert(size % 32 == 0);
+  const int bundle_size = 32;
+  const int bundle_mask = bundle_size - 1;
+  assert(size % bundle_size == 0);
+
+  int result = 0;
 
   uint8_t *valid_targets = BitmapAllocate(size);
+  uint8_t *jump_dests = BitmapAllocate(size);
 
   int offset = 0;
   uint8_t *ptr = data;
@@ -61,9 +80,33 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
         return 1;
       }
       ptr++;
-      if (trie_accepts(state)) {
+
+      /* TODO: Don't use a nested function. */
+      void RelativeJump(int32_t relative) {
+        uint32_t jump_dest = offset + i + 1 + relative;
+        if ((jump_dest & bundle_mask) != 0) {
+          /* Either '>' or '>=' work here since size is bundle-aligned
+             and jump_dest is not. */
+          if (jump_dest >= size) {
+            printf("direct jump out of range: %x\n", jump_dest);
+            result = 1;
+          } else {
+            BitmapSetBit(jump_dests, jump_dest - 1);
+          }
+        }
         mask |= 1 << i;
         state = trie_start;
+      }
+
+      if (trie_accepts_normal_inst(state)) {
+        mask |= 1 << i;
+        state = trie_start;
+      } else if (trie_accepts_jump_rel1(state)) {
+        RelativeJump(((int8_t *) ptr)[-1]);
+      } else if (trie_accepts_jump_rel2(state)) {
+        RelativeJump(((int16_t *) ptr)[-1]);
+      } else if (trie_accepts_jump_rel4(state)) {
+        RelativeJump(((int32_t *) ptr)[-1]);
       }
     }
     *mask_dest++ = mask;
@@ -75,8 +118,13 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
     }
   }
 
+  if (CheckJumpTargets(valid_targets, jump_dests, size)) {
+    return 1;
+  }
+
   free(valid_targets);
-  return 0;
+  free(jump_dests);
+  return result;
 }
 
 void ReadFile(const char *filename, uint8_t **result, size_t *result_size) {
