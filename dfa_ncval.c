@@ -71,21 +71,21 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
   while (ptr < end) {
     /* Process an instruction bundle. */
     uint32_t mask = 0;
-    int i;
+    int bundle_offset = 0;
     int state = trie_start;
-    for (i = 0; i < 32; i++) {
+    while (bundle_offset < bundle_size) {
       state = trie_table[state][*ptr];
       if (state == 0) {
-        printf("rejected at %x (byte 0x%02x)\n", load_addr + offset + i, *ptr);
+        printf("rejected at %x (byte 0x%02x)\n",
+               load_addr + offset + bundle_offset, *ptr);
         return 1;
       }
       ptr++;
+      bundle_offset++;
 
       /* TODO: Don't use a nested function. */
       void RelativeJump(int32_t relative) {
-        /* We add 1 because i has not yet been incremented to the end
-           of the instruction. */
-        uint32_t jump_dest = offset + i + 1 + relative;
+        uint32_t jump_dest = offset + bundle_offset + relative;
         if ((jump_dest & bundle_mask) != 0) {
           /* Either '>' or '>=' work here since size is bundle-aligned
              and jump_dest is not. */
@@ -99,12 +99,12 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
             BitmapSetBit(jump_dests, jump_dest - 1);
           }
         }
-        mask |= 1 << i;
+        mask |= 1 << (bundle_offset - 1);
         state = trie_start;
       }
 
       if (trie_accepts_normal_inst(state)) {
-        mask |= 1 << i;
+        mask |= 1 << (bundle_offset - 1);
         state = trie_start;
       } else if (trie_accepts_jump_rel1(state)) {
         RelativeJump(((int8_t *) ptr)[-1]);
