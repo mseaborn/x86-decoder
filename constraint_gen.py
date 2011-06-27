@@ -1335,8 +1335,12 @@ Encode = Conj(Instructions, ConcatBytes)
 Decode = Conj(ConcatBytes, Instructions)
 
 
-NaClEncode = Conj(
-    Encode,
+# The following restrictions are enforced by the original x86-32 NaCl
+# validator, but might not be needed for safety.  They might only be
+# in place because the original validator was built by whitelisting
+# what gcc produced, rather than by going through instruction opcode
+# tables.
+NaClOriginalRestrictions = Conj(
     # NaCl allows at most one instruction prefix, because of worries
     # about processor bugs.
     Mapping3('has_gs_prefix', 'has_data16_prefix', 'has_lock_prefix',
@@ -1344,12 +1348,42 @@ NaClEncode = Conj(
               (0, 0, 1),
               (0, 1, 0),
               (1, 0, 0)]),
+    Mapping3('has_rep_prefix', 'has_repnz_prefix', 'has_data16_prefix',
+             [(0, 0, 0),
+              (0, 0, 1),
+              (0, 1, 0),
+              (1, 0, 0)]),
+    # The original validator does not allow %gs with 'add', but does
+    # allow it with 'mov' and 'cmp'.
+    IfEqual('has_gs_prefix', 1,
+            InSet('inst', ['mov', 'cmp']),
+            Pass),
+    IfEqual('has_repnz_prefix', 1,
+            NotInSet('inst', ['movs', 'stos']),
+            Pass),
+    # These instructions are not allowed in their 16-bit forms.
+    IfInSet('inst', ['xadd', 'cmpxchg',
+                     'shld', 'shrd',
+                     'bsf', 'bsr',
+                     'jmp'],
+            Equal('has_data16_prefix', 0),
+            Pass),
+    # These instructions are not allowed at all.
+    NotInSet('inst', ['bt', 'bts', 'btr', 'btc',
+                      'lods',
+                      'jecxz']),
+    )
+
+NaClConstraints = Conj(
+    NaClOriginalRestrictions,
     # We exclude 'modrm_jump' because unmasked indirect jumps are not allowed.
     Switch('jump_type',
            ('not_jump', Equal('accept_type', 'normal_inst')),
            ('relative_jump',
             Apply('accept_type', Format, ['immediate_bytes'], 'jump_rel%i'))),
     )
+
+NaClEncode = Conj(Encode, NaClConstraints)
 
 
 # Test decoding an instruction.

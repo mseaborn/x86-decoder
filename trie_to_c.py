@@ -58,13 +58,23 @@ def Main():
 
   out.write('static const int trie_start = %i;\n\n' % node_to_id[root_node])
 
-  accept_types = sorted(set(node.accept for node in nodes
-                            if node.accept != False))
-  for accept_type in accept_types:
+  accept_types = set(node.accept for node in nodes
+                     if node.accept != False)
+  # This accept type disappears when relative jumps with 16-bit
+  # offsets are disallowed, but it is nice to keep the C handler code
+  # around.  Such jumps are not unsafe and could be allowed.
+  accept_types.add('jump_rel2')
+  assert 'jump_rel1' in accept_types
+  assert 'jump_rel4' in accept_types
+
+  for accept_type in sorted(accept_types):
     acceptors = [node_to_id[node] for node in nodes
                  if node.accept == accept_type]
     print 'Type %r has %i acceptors' % (accept_type, len(acceptors))
-    expr = ' || '.join('node_id == %i' % node_id for node_id in acceptors)
+    if len(acceptors) > 0:
+      expr = ' || '.join('node_id == %i' % node_id for node_id in acceptors)
+    else:
+      expr = '0 /* These instructions are currently disallowed */'
     out.write('static inline int trie_accepts_%s(int node_id) '
               '{\n  return %s;\n}\n\n'
               % (accept_type, expr))
