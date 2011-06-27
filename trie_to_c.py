@@ -4,13 +4,24 @@ import trie
 # Converts the trie/DFA to a C file.
 
 
+# As an optimisation, group together accepting states of the same
+# type.  This makes it possible to check for an accepting type with a
+# range check.
+def SortKey(node):
+  if node.accept != False:
+    return [0, node.accept]
+  else:
+    return [1]
+
+
 def Main():
   trie_file = 'new.trie'
 
   root_node = trie.TrieFromFile(trie_file)
+  nodes = sorted(trie.GetAllNodes(root_node), key=SortKey)
   # Node ID 0 is reserved as the rejecting state.  For a little extra
   # safety, all transitions from node 0 lead to node 0.
-  nodes = [trie.EmptyNode] + trie.GetAllNodes(root_node)
+  nodes = [trie.EmptyNode] + nodes
   node_to_id = dict((node, index) for index, node in enumerate(nodes))
 
   out = open('trie_table.h', 'w')
