@@ -14,6 +14,35 @@ def SortKey(node):
     return [1]
 
 
+def WriteTransitionTable(out, nodes, node_to_id):
+  out.write('static const uint8_t trie_table[][256] = {\n')
+  for node in nodes:
+    out.write('  /* state %i: accept=%s */ {\n' %
+              (node_to_id[node], node.accept))
+    if 'XX' in node.children:
+      assert len(node.children) == 1, node.children
+      bytes = [node_to_id[node.children['XX']]] * 256
+    else:
+      bytes = [0] * 256
+      for byte, dest_node in node.children.iteritems():
+        bytes[int(byte, 16)] = node_to_id[dest_node]
+    out.write(' ' * 11 + '/* ')
+    out.write('  '.join('X%x' % lower for lower in xrange(16)))
+    out.write(' */\n')
+    for upper in xrange(16):
+      out.write('    /* %xX */  ' % upper)
+      out.write(', '.join('%2i' % bytes[upper*16 + lower]
+                          for lower in xrange(16)))
+      out.write(',\n')
+    out.write('  },\n')
+  out.write('};\n')
+  out.write("""
+static inline uint8_t trie_lookup(uint8_t state, uint8_t byte) {
+  return trie_table[state][byte];
+}
+""")
+
+
 def Main():
   trie_file = 'new.trie'
 
@@ -40,27 +69,7 @@ def Main():
               '{\n  return %s;\n}\n\n'
               % (accept_type, expr))
 
-  out.write('static const uint8_t trie_table[][256] = {\n')
-  for node in nodes:
-    out.write('  /* state %i: accept=%s */ {\n' %
-              (node_to_id[node], node.accept))
-    if 'XX' in node.children:
-      assert len(node.children) == 1, node.children
-      bytes = [node_to_id[node.children['XX']]] * 256
-    else:
-      bytes = [0] * 256
-      for byte, dest_node in node.children.iteritems():
-        bytes[int(byte, 16)] = node_to_id[dest_node]
-    out.write(' ' * 11 + '/* ')
-    out.write('  '.join('X%x' % lower for lower in xrange(16)))
-    out.write(' */\n')
-    for upper in xrange(16):
-      out.write('    /* %xX */  ' % upper)
-      out.write(', '.join('%2i' % bytes[upper*16 + lower]
-                          for lower in xrange(16)))
-      out.write(',\n')
-    out.write('  },\n')
-  out.write('};\n')
+  WriteTransitionTable(out, nodes, node_to_id)
   out.close()
 
 

@@ -74,7 +74,7 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
     int bundle_offset = 0;
     int state = trie_start;
     while (bundle_offset < bundle_size) {
-      state = trie_table[state][*ptr];
+      state = trie_lookup(state, *ptr);
       if (state == 0) {
         printf("rejected at %x (byte 0x%02x)\n",
                load_addr + offset + bundle_offset, *ptr);
@@ -124,7 +124,7 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
         int state2 = state;
         uint8_t *ptr2 = ptr;
         while (bundle_offset2 < bundle_size) {
-          state2 = trie_table[state2][*ptr2];
+          state2 = trie_lookup(state2, *ptr2);
           if (state2 == 0) {
             /* Backtrack early.  It is not essential to catch this
                case, but otherwise we will scan the rest of the
