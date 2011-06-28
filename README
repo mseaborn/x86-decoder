@@ -58,6 +58,12 @@ two specifications are equivalent, or list the instructions that one
 specification accepts and the other rejects.
 
 
+== How to try it out ==
+
+$ make
+$ ./dfa_ncval .../hello_world.nexe
+
+
 == How it works ==
 
 TODO: Explain how we generate the DFA.
