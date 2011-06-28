@@ -1,0 +1,92 @@
+
+= A DFA-based x86 validator for Native Client =
+
+
+This is a replacement x86-32 validator for Native Client.  It uses a
+DFA (Deterministic Finite Automaton) for recognising allowed x86
+instructions.  This has a number of benefits:
+
+ * it's faster
+ * it's smaller
+ * it's easier to verify the correctness of the validator
+
+
+Faster:
+
+The DFA-based validator is roughly 8-10 times faster than the original
+x86-32 validator.
+
+Time to validate irt.nexe + libc.so.6 + ld.so:
+  original ncval:  0.446s
+  dfa_ncval:       0.047s
+
+Smaller:
+
+The DFA-based validator is <3000 lines of non-generated code:
+It has 250 lines of C code, and the rest is in Python.
+
+In contrast, the size of NaCl's validator_x86+validator/x86
+directories is around 30,000 lines (excluding the 'testdata' and 'gen'
+directories), although this includes an x86-64 validator too.
+
+The DFA currently has 88 states.  The DFA transition table is
+therefore about 22k in size:  88 * 256 = 22528 (this DFA accepts bytes
+as inputs so we multiply the number of states by 256).  The total text
+size of the validator executable is about 26k.
+
+Easier to verify:
+
+Since the DFA is acyclic, it is possible to enumerate all the byte
+sequences that it accepts.  It is entirely feasible to feed all the
+accepted instructions through the original validator, so we can be
+confident that the new validator is at least as safe as the original
+validator, and accepts no more instructions than the original.
+
+Currently the DFA accepts about 430,000 instruction templates.  (This
+is without enumerating all possible immediate values.  This figure
+comes after expanding out some but not all register combinations.)
+
+This figure would be higher if we accepted some prefix combinations
+that are probably safe but that the original validator rejects, but it
+would still be totally feasible to enumerate the accepted
+instructions.
+
+Another nice property of acyclic DFAs is that you can do set
+operations on them.  This makes it easy to compare one formal
+specification of the validator with another.  You can check whether
+two specifications are equivalent, or list the instructions that one
+specification accepts and the other rejects.
+
+
+== How it works ==
+
+TODO: Explain how we generate the DFA.
+
+TODO: Explain how we handle indirect jumps (superinstructions) and
+direct jumps.
+
+
+== Still to do ==
+
+* Implement instruction replacement checking.  NaCl's
+nacl_dyncode_modify() syscall allows immediate values and
+displacements to be overwritten.  It should be easy to implement this
+by annotating each accepting DFA state with the number of wildcard
+bytes the instruction encoding ends with.
+
+* Add SSE/MMX/3DNow instructions.
+
+* Fix other cases where we disallow instructions that the original
+validator allows.
+
+
+== Future work ==
+
+Implement an x86-64 validator.
+
+
+== Differences from the original validator ==
+
+The DFA-based validator does not require that CALL instructions are
+aligned so that they end at an instruction bundle boundary.
+See http://code.google.com/p/nativeclient/issues/detail?id=1955
