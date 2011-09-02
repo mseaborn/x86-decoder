@@ -66,18 +66,17 @@ def MergeMany(nodes, merge_accept_types):
   if len(nodes) == 0:
     return EmptyNode
   children = {}
-  keys = set()
   accept_types = set()
+
+  by_key = {}
   for node in nodes:
-    keys.update(node.children.iterkeys())
     accept_types.add(node.accept)
-  for key in keys:
-    cs = set()
-    for node in nodes:
-      child = node.children.get(key, EmptyNode)
-      if child != EmptyNode:
-        cs.add(child)
-    children[key] = MergeMany(cs, merge_accept_types)
+    for key, value in node.children.iteritems():
+      by_key.setdefault(key, []).append(value)
+
+  for key, subnodes in by_key.iteritems():
+    children[key] = MergeMany(subnodes, merge_accept_types)
+
   if len(accept_types) == 1:
     accept = list(accept_types)[0]
   else:
