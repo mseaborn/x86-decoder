@@ -61,7 +61,7 @@ def NormaliseObjdumpDisasm(disasm):
 
 
 def ReadObjdump(obj_file):
-  proc = subprocess.Popen(['objdump', '-M', 'suffix', '--prefix-addresses',
+  proc = subprocess.Popen(['objdump', '-M', 'intel', '--prefix-addresses',
                            '-d', obj_file],
                           stdout=subprocess.PIPE)
   regexp = re.compile('0x([0-9a-f]+)\s*')
