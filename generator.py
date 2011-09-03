@@ -213,14 +213,19 @@ def GetRoot():
     elif parts == ['rm', 'imm']:
       node = DftLabel('imm_arg', 'VALUE%i' % size,
                       ModRMSingleArgNode(sizes[0], modrm_opcode, sizes[1] / 8))
+    elif parts == ['*ax', 'imm']:
+      node = DftLabels([('imm_arg', 'VALUE%i' % size),
+                        ('*ax_arg', regs_by_size[size][0][1])],
+                       TrieOfList(['XX'] * (sizes[1] / 8), trie.AcceptNode))
     else:
-      xxxx
+      raise AssertionError('Unknown pattern: %r' % args)
     top_nodes.append(TrieOfList(bytes, DftLabels([('instr_name', instr_name),
                                                   ('args', parts)],
                                                  node)))
 
   Add('01', 'add', [('rm', 32), ('reg', 32)])
   Add('03', 'add', [('reg', 32), ('rm', 32)])
+  Add('05', 'add', [('*ax', 32), ('imm', 32)])
   Add('80', 'add', [('rm', 8), ('imm', 8)], modrm_opcode=0)
   Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
   Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
