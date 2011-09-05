@@ -152,29 +152,16 @@ import trie
 def NoMerge(x):
   raise Exception('Cannot merge %r' % x)
 
-def F_rm_reg():
-  nodes = []
-  for bytes, arg1, arg2 in ModRM(regs32):
-    nodes.append(TrieOfList(bytes,
-                            DftLabels([('dest_arg', arg1),
-                                       ('src_arg', arg2)], trie.AcceptNode)))
-  return trie.MergeMany(nodes, NoMerge)
 
-def F_reg_rm():
+@Memoize
+def ModRMNode(regs, immediate_size):
   nodes = []
-  for bytes, arg1, arg2 in ModRM(regs32):
+  tail = TrieOfList(['XX'] * immediate_size, trie.AcceptNode)
+  for bytes, reg_arg, rm_arg in ModRM(regs32):
     nodes.append(TrieOfList(bytes,
-                            DftLabels([('dest_arg', arg2),
-                                       ('src_arg', arg1)], trie.AcceptNode)))
+                            DftLabels([('reg_arg', reg_arg),
+                                       ('rm_arg', rm_arg)], tail)))
   return trie.MergeMany(nodes, NoMerge)
-
-# E: register or memory (from ModRM)
-# G: register (from ModRM)
-# I: immediate
-i_types = {
-  'Ev, Gv': F_rm_reg,
-  'Gv, Ev': F_reg_rm,
-  }
 
 def FlattenTrie(node, bytes=[], labels=[]):
   if isinstance(node, DftLabel):
@@ -192,17 +179,19 @@ def GetRoot():
 
   def Add(bytes, instr_name, args):
     bytes = bytes.split()
-    top_nodes.append(TrieOfList(bytes, DftLabel('instr_name', instr_name,
-                                                i_types[args]())))
+    top_nodes.append(TrieOfList(bytes, DftLabels([('instr_name', instr_name),
+                                                  ('args', args)],
+                                                 ModRMNode(regs32, 0))))
 
-  Add('01', 'add', 'Ev, Gv')
-  Add('03', 'add', 'Gv, Ev')
+  Add('01', 'add', ['rm', 'reg'])
+  Add('03', 'add', ['reg', 'rm'])
   return trie.MergeMany(top_nodes, NoMerge)
 
 def GetAll():
   for bytes, labels in FlattenTrie(GetRoot()):
     args = dict((label.key, label.value) for label in labels)
-    instr = '%(instr_name)s %(src_arg)s, %(dest_arg)s' % args
+    i_args = ', '.join([args['%s_arg' % arg] for arg in args['args']])
+    instr = '%s %s' % (args['instr_name'], i_args)
     yield (bytes, instr)
 
 import objdump_check
