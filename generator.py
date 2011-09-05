@@ -287,7 +287,10 @@ def GetRoot():
     bytes = bytes.split()
     parts = [kind for kind, size in args]
     sizes = [size for kind, size in args]
-    if parts == ['rm', 'reg']:
+    if parts == []:
+      assert modrm_opcode is None
+      node = trie.AcceptNode
+    elif parts == ['rm', 'reg']:
       assert modrm_opcode is None
       node = ModRMNode(sizes[1], sizes[0], 0)
     elif parts == ['reg', 'rm']:
@@ -295,14 +298,34 @@ def GetRoot():
       node = ModRMNode(sizes[0], sizes[1], 0)
     elif parts == ['rm', 'imm']:
       assert modrm_opcode is not None
-      node = DftLabel('imm_arg', 'VALUE%i' % size,
+      node = DftLabel('imm_arg', 'VALUE%i' % sizes[1],
                       ModRMSingleArgNode(sizes[0], modrm_opcode, instr_name,
                                          sizes[1] / 8))
     elif parts == ['*ax', 'imm']:
       assert modrm_opcode is None
-      node = DftLabels([('imm_arg', 'VALUE%i' % size),
-                        ('*ax_arg', regs_by_size[size][0][1])],
+      node = DftLabels([('imm_arg', 'VALUE%i' % sizes[1]),
+                        ('*ax_arg', regs_by_size[sizes[1]][0][1])],
                        TrieOfList(['XX'] * (sizes[1] / 8), trie.AcceptNode))
+    elif parts == ['addr', '*ax']:
+      assert modrm_opcode is None
+      node = DftLabels([('addr_arg', 'ds:VALUE32'),
+                        ('*ax_arg', regs_by_size[sizes[1]][0][1])],
+                       TrieOfList(['XX'] * 4, trie.AcceptNode))
+    elif parts == ['*ax', 'addr']:
+      assert modrm_opcode is None
+      node = DftLabels([('addr_arg', 'ds:VALUE32'),
+                        ('*ax_arg', regs_by_size[sizes[0]][0][1])],
+                       TrieOfList(['XX'] * 4, trie.AcceptNode))
+    # Pattern [('fixreg', N), 'imm']
+    elif (len(parts) == 2 and parts[1] == 'imm' and
+          isinstance(parts[0], tuple) and
+          len(parts[0]) == 2 and
+          parts[0][0] == 'fixreg'):
+      assert modrm_opcode is None
+      node = DftLabels([('fixreg_arg', regs_by_size[sizes[0]][parts[0][1]][1]),
+                        ('imm_arg', 'VALUE%i' % sizes[1])],
+                       TrieOfList(['XX'] * (sizes[1] / 8), trie.AcceptNode))
+      parts = ['fixreg', 'imm']
     else:
       raise AssertionError('Unknown pattern: %r' % args)
     node = DftLabel('args', parts, node)
@@ -310,10 +333,13 @@ def GetRoot():
       node = DftLabel('instr_name', instr_name, node)
     top_nodes.append(TrieOfList(bytes, node))
 
+  def AddLW(opcode, instr, format, **kwargs):
+    Add('66 ' + Byte(opcode), instr, [(arg, 16) for arg in format], **kwargs)
+    Add(Byte(opcode), instr, [(arg, 32) for arg in format], **kwargs)
+
   def AddPair(opcode, instr, format, **kwargs):
     Add(Byte(opcode), instr, [(arg, 8) for arg in format], **kwargs)
-    Add('66 ' + Byte(opcode + 1), instr, [(arg, 16) for arg in format], **kwargs)
-    Add(Byte(opcode + 1), instr, [(arg, 32) for arg in format], **kwargs)
+    AddLW(opcode + 1, instr, format, **kwargs)
 
   for arith_opcode, instr in enumerate(['add', 'or', 'adc', 'sbb',
                                         'and', 'sub', 'xor', 'cmp']):
@@ -327,6 +353,16 @@ def GetRoot():
     Add('66 83', instr, [('rm', 16), ('imm', 8)], modrm_opcode=arith_opcode)
     Add('83', instr, [('rm', 32), ('imm', 8)], modrm_opcode=arith_opcode)
 
+  Add('f4', 'hlt', [])
+  Add('90', 'nop', [])
+  AddPair(0x88, 'mov', ['rm', 'reg'])
+  AddPair(0x8a, 'mov', ['reg', 'rm'])
+  AddPair(0xc6, 'mov', ['rm', 'imm'], modrm_opcode=0)
+  AddPair(0xa0, 'mov', ['*ax', 'addr'])
+  AddPair(0xa2, 'mov', ['addr', '*ax'])
+  for reg_num in range(8):
+    Add(Byte(0xb0 + reg_num), 'mov', [(('fixreg', reg_num), 8), ('imm', 8)])
+    AddLW(0xb8 + reg_num, 'mov', [('fixreg', reg_num), 'imm'])
   Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
   Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
   Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
