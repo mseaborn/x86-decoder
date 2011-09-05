@@ -44,9 +44,10 @@ regs_by_size = {
   }
 
 mem_sizes = {
-  32: 'DWORD',
-  16: 'WORD',
-  8: 'BYTE',
+  32: 'DWORD PTR ',
+  16: 'WORD PTR ',
+  8: 'BYTE PTR ',
+  'lea_mem': '',
   }
 
 cond_codes = (
@@ -106,11 +107,11 @@ def Sib(mod):
 
 def FormatMemAccess(size, parts):
   parts = [part for part in parts if part != '']
-  return '%s PTR [%s]' % (mem_sizes[size], '+'.join(parts))
+  return '%s[%s]' % (mem_sizes[size], '+'.join(parts))
 
 
 def ModRM1(rm_size):
-  yield (0, 5, ['XX'] * 4, '%s PTR ds:VALUE32' % mem_sizes[rm_size])
+  yield (0, 5, ['XX'] * 4, '%sds:VALUE32' % mem_sizes[rm_size])
   for mod, dispsize, disp_str in ((0, 0, ''),
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
@@ -127,9 +128,10 @@ def ModRM1(rm_size):
     for sib_bytes, desc in Sib(mod):
       yield (mod, reg2, sib_bytes + ['XX'] * dispsize,
              FormatMemAccess(rm_size, desc + [disp_str]))
-  mod = 3
-  for reg2, regname2 in regs_by_size[rm_size]:
-    yield (mod, reg2, [], regname2)
+  if rm_size != 'lea_mem':
+    mod = 3
+    for reg2, regname2 in regs_by_size[rm_size]:
+      yield (mod, reg2, [], regname2)
 
 
 def ModRM(reg_size, rm_size):
@@ -237,7 +239,8 @@ def ModRMNode(reg_size, rm_size, immediate_size):
                             DftLabels([('reg_arg', reg_arg),
                                        ('rm_arg', rm_arg)], tail)))
   node = MergeMany(nodes, NoMerge)
-  return TrieNode(dict((key, DftLabel('test_keep', key == '00', value))
+  return TrieNode(dict((key, DftLabel('test_keep', key == '00' or key == 'ff',
+                                      value))
                        for key, value in node.children.iteritems()))
 
 
@@ -251,7 +254,7 @@ def ModRMSingleArgNode(rm_size, opcode, instr_name, immediate_size):
   node = MergeMany(nodes, NoMerge)
   def Filter(byte):
     mod, reg1, reg2 = CatBitsRev(byte, [2, 3, 3])
-    return mod == 0 and reg2 == 0
+    return (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
   return TrieNode(dict((key, DftLabel('test_keep', Filter(int(key, 16)),
                                       DftLabel('instr_name', instr_name,
                                                value)))
@@ -283,6 +286,15 @@ def FilterModRM(node):
       if value != trie.EmptyNode:
         children[key] = value
     return TrieNode(children, node.accept)
+
+
+def FilterPrefix(bytes, node):
+  if len(bytes) == 0:
+    return node
+  else:
+    return TrieNode({bytes[0]: FilterPrefix(bytes[1:],
+                                            node.children[bytes[0]])},
+                    node.accept)
 
 
 def SubstSize(dec, size):
@@ -318,6 +330,11 @@ def GetRoot():
         assert rm_size is None
         rm_size = size
         out_args.append(kind)
+      elif kind == 'lea_mem':
+        assert rm_size is None
+        # For 'lea', the size is really irrelevant.
+        rm_size = 'lea_mem'
+        out_args.append('rm')
       elif kind == 'reg':
         assert reg_size is None
         reg_size = size
@@ -411,6 +428,7 @@ def GetRoot():
 
   AddPair(0x84, 'test', ['rm', 'reg'])
   AddPair(0x86, 'xchg', ['rm', 'reg'])
+  AddLW(0x8d, 'lea', ['reg', 'lea_mem'])
 
   Add('f4', 'hlt', [])
   Add('90', 'nop', [])
@@ -439,10 +457,16 @@ def GetAll(node):
 
 import objdump_check
 
+print 'Building trie...'
 trie_root = GetRoot()
+print 'Size:'
 print TrieSize(trie_root, False)
-print 'testing...'
+print 'Testing...'
 filtered_trie = FilterModRM(trie_root)
 for bytes, labels in GetAll(filtered_trie):
   print '%s:%s' % (' '.join(bytes), labels)
 objdump_check.DisassembleTest(lambda: GetAll(filtered_trie), bits=32)
+
+print 'Testing all ModRM bytes...'
+objdump_check.DisassembleTest(lambda: GetAll(FilterPrefix(['01'], trie_root)),
+                              bits=32)
