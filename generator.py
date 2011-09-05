@@ -49,6 +49,11 @@ mem_sizes = {
   8: 'BYTE',
   }
 
+cond_codes = (
+  'o', 'no', 'b', 'ae', 'e', 'ne', 'be', 'a',
+  's', 'ns', 'p', 'np', 'l', 'ge', 'le', 'g',
+  )
+
 
 def AssertEq(x, y):
   if x != y:
@@ -321,6 +326,10 @@ def GetRoot():
         assert immediate_size == 0
         immediate_size = 4
         SimpleArg('ds:VALUE32')
+      elif kind == 'jump_dest':
+        assert immediate_size == 0
+        immediate_size = size / 8
+        SimpleArg('JUMP_DEST')
       elif kind == '*ax':
         SimpleArg(regs_by_size[size][0][1])
       elif kind in ('1', 'cl'):
@@ -395,6 +404,13 @@ def GetRoot():
 
   AddLW(0x69, 'imul', ['reg', 'rm', 'imm'])
   AddLW(0x6b, 'imul', ['reg', 'rm', 'imm8'])
+
+  # Short (8-bit offset) conditional jumps
+  for cond_num, cond_name in enumerate(cond_codes):
+    Add(Byte(0x70 + cond_num), 'j' + cond_name, [('jump_dest', 8)])
+
+  AddPair(0x84, 'test', ['rm', 'reg'])
+  AddPair(0x86, 'xchg', ['rm', 'reg'])
 
   Add('f4', 'hlt', [])
   Add('90', 'nop', [])
