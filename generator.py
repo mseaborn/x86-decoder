@@ -285,71 +285,56 @@ def GetRoot():
 
   def Add(bytes, instr_name, args, modrm_opcode=None):
     bytes = bytes.split()
-    parts = [kind for kind, size in args]
-    sizes = [size for kind, size in args]
-    if parts == []:
+    immediate_size = 0 # Size in bytes
+    rm_size = None
+    reg_size = None
+    out_args = []
+    labels = []
+
+    def SimpleArg(arg):
+      out_args.append(arg)
+      labels.append(('%s_arg' % arg, arg))
+
+    for kind, size in args:
+      if kind == 'imm':
+        assert immediate_size == 0
+        immediate_size = size / 8
+        SimpleArg('VALUE%i' % size)
+      elif kind == 'rm':
+        assert rm_size is None
+        rm_size = size
+        out_args.append(kind)
+      elif kind == 'reg':
+        assert reg_size is None
+        reg_size = size
+        out_args.append(kind)
+      elif kind == 'addr':
+        assert immediate_size == 0
+        immediate_size = 4
+        SimpleArg('ds:VALUE32')
+      elif kind == '*ax':
+        SimpleArg(regs_by_size[size][0][1])
+      elif kind in ('1', 'cl'):
+        SimpleArg(kind)
+      elif isinstance(kind, tuple) and len(kind) == 2 and kind[0] == 'fixreg':
+        SimpleArg(regs_by_size[size][kind[1]][1])
+      else:
+        raise AssertionError('Unknown arg type: %s' % repr(kind))
+
+    if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
-      node = trie.AcceptNode
-    elif parts == ['imm']:
-      assert modrm_opcode is None
-      node = DftLabel('imm_arg', 'VALUE%i' % sizes[0],
-                      TrieOfList(['XX'] * (sizes[0] / 8), trie.AcceptNode))
-    elif parts == ['rm', 'reg']:
-      assert modrm_opcode is None
-      node = ModRMNode(sizes[1], sizes[0], 0)
-    elif parts == ['reg', 'rm']:
-      assert modrm_opcode is None
-      node = ModRMNode(sizes[0], sizes[1], 0)
-    elif parts == ['rm', 'imm']:
+      node = ModRMNode(reg_size, rm_size, immediate_size)
+    elif rm_size is not None and reg_size is None:
       assert modrm_opcode is not None
-      node = DftLabel('imm_arg', 'VALUE%i' % sizes[1],
-                      ModRMSingleArgNode(sizes[0], modrm_opcode, instr_name,
-                                         sizes[1] / 8))
-    elif parts == ['rm', '1']:
-      assert modrm_opcode is not None
-      node = DftLabel('1_arg', '1',
-                      ModRMSingleArgNode(sizes[0], modrm_opcode, instr_name, 0))
-    elif parts == ['rm', 'cl']:
-      assert modrm_opcode is not None
-      node = DftLabel('cl_arg', 'cl',
-                      ModRMSingleArgNode(sizes[0], modrm_opcode, instr_name, 0))
-    elif parts == ['*ax', 'imm']:
+      node = ModRMSingleArgNode(rm_size, modrm_opcode, instr_name,
+                                immediate_size)
+    elif rm_size is None and reg_size is None:
       assert modrm_opcode is None
-      node = DftLabels([('imm_arg', 'VALUE%i' % sizes[1]),
-                        ('*ax_arg', regs_by_size[sizes[1]][0][1])],
-                       TrieOfList(['XX'] * (sizes[1] / 8), trie.AcceptNode))
-    elif parts == ['addr', '*ax']:
-      assert modrm_opcode is None
-      node = DftLabels([('addr_arg', 'ds:VALUE32'),
-                        ('*ax_arg', regs_by_size[sizes[1]][0][1])],
-                       TrieOfList(['XX'] * 4, trie.AcceptNode))
-    elif parts == ['*ax', 'addr']:
-      assert modrm_opcode is None
-      node = DftLabels([('addr_arg', 'ds:VALUE32'),
-                        ('*ax_arg', regs_by_size[sizes[0]][0][1])],
-                       TrieOfList(['XX'] * 4, trie.AcceptNode))
-    # Pattern [('fixreg', N)]
-    elif (len(parts) == 1 and
-          isinstance(parts[0], tuple) and
-          len(parts[0]) == 2 and
-          parts[0][0] == 'fixreg'):
-      assert modrm_opcode is None
-      node = DftLabel('fixreg_arg', regs_by_size[sizes[0]][parts[0][1]][1],
-                      trie.AcceptNode)
-      parts = ['fixreg']
-    # Pattern [('fixreg', N), 'imm']
-    elif (len(parts) == 2 and parts[1] == 'imm' and
-          isinstance(parts[0], tuple) and
-          len(parts[0]) == 2 and
-          parts[0][0] == 'fixreg'):
-      assert modrm_opcode is None
-      node = DftLabels([('fixreg_arg', regs_by_size[sizes[0]][parts[0][1]][1]),
-                        ('imm_arg', 'VALUE%i' % sizes[1])],
-                       TrieOfList(['XX'] * (sizes[1] / 8), trie.AcceptNode))
-      parts = ['fixreg', 'imm']
+      node = TrieOfList(['XX'] * immediate_size, trie.AcceptNode)
     else:
-      raise AssertionError('Unknown pattern: %r' % args)
-    node = DftLabel('args', parts, node)
+      raise AssertionError('Unknown type')
+    node = DftLabels(labels, node)
+    node = DftLabel('args', out_args, node)
     if modrm_opcode is None:
       node = DftLabel('instr_name', instr_name, node)
     top_nodes.append(TrieOfList(bytes, node))
