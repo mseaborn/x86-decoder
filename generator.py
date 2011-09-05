@@ -280,6 +280,15 @@ def FilterModRM(node):
     return TrieNode(children, node.accept)
 
 
+def SubstSize(dec, size):
+  def Subst(value):
+    if value == 'imm8':
+      return ('imm', 8)
+    else:
+      return (value, size)
+  return map(Subst, dec)
+
+
 def GetRoot():
   top_nodes = []
 
@@ -340,11 +349,11 @@ def GetRoot():
     top_nodes.append(TrieOfList(bytes, node))
 
   def AddLW(opcode, instr, format, **kwargs):
-    Add('66 ' + Byte(opcode), instr, [(arg, 16) for arg in format], **kwargs)
-    Add(Byte(opcode), instr, [(arg, 32) for arg in format], **kwargs)
+    Add('66 ' + Byte(opcode), instr, SubstSize(format, 16), **kwargs)
+    Add(Byte(opcode), instr, SubstSize(format, 32), **kwargs)
 
   def AddPair(opcode, instr, format, **kwargs):
-    Add(Byte(opcode), instr, [(arg, 8) for arg in format], **kwargs)
+    Add(Byte(opcode), instr, SubstSize(format, 8), **kwargs)
     AddLW(opcode + 1, instr, format, **kwargs)
 
   # Arithmetic instructions
@@ -359,8 +368,7 @@ def GetRoot():
     # 0x82 is a hole in the table.  We don't use AddPair(0x82) here
     # because 0x80 and 0x82 would be equivalent (both 8-bit ops with
     # imm8).
-    Add('66 83', instr, [('rm', 16), ('imm', 8)], modrm_opcode=arith_opcode)
-    Add('83', instr, [('rm', 32), ('imm', 8)], modrm_opcode=arith_opcode)
+    AddLW(0x83, instr, ['rm', 'imm8'], modrm_opcode=arith_opcode)
 
   # Group 2: shift instructions
   for instr, modrm_opcode in [('rol', 0),
@@ -372,9 +380,7 @@ def GetRoot():
                               # 6 is absent.
                               ('sar', 7),
                               ]:
-    Add('c0', instr, [('rm', 8), ('imm', 8)], modrm_opcode=modrm_opcode)
-    Add('66 c1', instr, [('rm', 16), ('imm', 8)], modrm_opcode=modrm_opcode)
-    Add('c1', instr, [('rm', 32), ('imm', 8)], modrm_opcode=modrm_opcode)
+    AddPair(0xc0, instr, ['rm', 'imm8'], modrm_opcode=modrm_opcode)
     AddPair(0xd0, instr, ['rm', '1'], modrm_opcode=modrm_opcode)
     AddPair(0xd2, instr, ['rm', 'cl'], modrm_opcode=modrm_opcode)
 
@@ -386,6 +392,9 @@ def GetRoot():
 
   AddLW(0x68, 'push', ['imm'])
   Add('6a', 'push', [('imm', 8)])
+
+  AddLW(0x69, 'imul', ['reg', 'rm', 'imm'])
+  AddLW(0x6b, 'imul', ['reg', 'rm', 'imm8'])
 
   Add('f4', 'hlt', [])
   Add('90', 'nop', [])
