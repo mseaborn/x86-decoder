@@ -301,6 +301,14 @@ def GetRoot():
       node = DftLabel('imm_arg', 'VALUE%i' % sizes[1],
                       ModRMSingleArgNode(sizes[0], modrm_opcode, instr_name,
                                          sizes[1] / 8))
+    elif parts == ['rm', '1']:
+      assert modrm_opcode is not None
+      node = DftLabel('1_arg', '1',
+                      ModRMSingleArgNode(sizes[0], modrm_opcode, instr_name, 0))
+    elif parts == ['rm', 'cl']:
+      assert modrm_opcode is not None
+      node = DftLabel('cl_arg', 'cl',
+                      ModRMSingleArgNode(sizes[0], modrm_opcode, instr_name, 0))
     elif parts == ['*ax', 'imm']:
       assert modrm_opcode is None
       node = DftLabels([('imm_arg', 'VALUE%i' % sizes[1]),
@@ -341,6 +349,7 @@ def GetRoot():
     Add(Byte(opcode), instr, [(arg, 8) for arg in format], **kwargs)
     AddLW(opcode + 1, instr, format, **kwargs)
 
+  # Arithmetic instructions
   for arith_opcode, instr in enumerate(['add', 'or', 'adc', 'sbb',
                                         'and', 'sub', 'xor', 'cmp']):
     for format_num, format in enumerate([['rm', 'reg'],
@@ -349,9 +358,27 @@ def GetRoot():
       opcode = CatBits([arith_opcode, format_num, 0], [5, 2, 1])
       AddPair(opcode, instr, format)
     AddPair(0x80, instr, ['rm', 'imm'], modrm_opcode=arith_opcode)
-    # 0x82 is a hole in the table...
+    # 0x82 is a hole in the table.  We don't use AddPair(0x82) here
+    # because 0x80 and 0x82 would be equivalent (both 8-bit ops with
+    # imm8).
     Add('66 83', instr, [('rm', 16), ('imm', 8)], modrm_opcode=arith_opcode)
     Add('83', instr, [('rm', 32), ('imm', 8)], modrm_opcode=arith_opcode)
+
+  # Group 2: shift instructions
+  for instr, modrm_opcode in [('rol', 0),
+                              ('ror', 1),
+                              ('rcl', 2),
+                              ('rcr', 3),
+                              ('shl', 4),
+                              ('shr', 5),
+                              # 6 is absent.
+                              ('sar', 7),
+                              ]:
+    Add('c0', instr, [('rm', 8), ('imm', 8)], modrm_opcode=modrm_opcode)
+    Add('66 c1', instr, [('rm', 16), ('imm', 8)], modrm_opcode=modrm_opcode)
+    Add('c1', instr, [('rm', 32), ('imm', 8)], modrm_opcode=modrm_opcode)
+    AddPair(0xd0, instr, ['rm', '1'], modrm_opcode=modrm_opcode)
+    AddPair(0xd2, instr, ['rm', 'cl'], modrm_opcode=modrm_opcode)
 
   Add('f4', 'hlt', [])
   Add('90', 'nop', [])
