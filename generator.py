@@ -175,6 +175,17 @@ def ModRMNode(reg_size, rm_size, immediate_size):
                                        ('rm_arg', rm_arg)], tail)))
   return trie.MergeMany(nodes, NoMerge)
 
+
+@Memoize
+def ModRMSingleArgNode(rm_size, opcode, immediate_size):
+  nodes = []
+  tail = TrieOfList(['XX'] * immediate_size, trie.AcceptNode)
+  for bytes, rm_arg in ModRMSingleArg(rm_size, opcode):
+    nodes.append(TrieOfList(bytes,
+                            DftLabels([('rm_arg', rm_arg)], tail)))
+  return trie.MergeMany(nodes, NoMerge)
+
+
 def FlattenTrie(node, bytes=[], labels=[]):
   if isinstance(node, DftLabel):
     for result in FlattenTrie(node.next, bytes, labels + [node]):
@@ -189,14 +200,19 @@ def FlattenTrie(node, bytes=[], labels=[]):
 def GetRoot():
   top_nodes = []
 
-  def Add(bytes, instr_name, args):
+  def Add(bytes, instr_name, args, modrm_opcode=None):
     bytes = bytes.split()
     parts = [kind for kind, size in args]
     sizes = [size for kind, size in args]
     if parts == ['rm', 'reg']:
+      assert modrm_opcode is None
       node = ModRMNode(sizes[1], sizes[0], 0)
     elif parts == ['reg', 'rm']:
+      assert modrm_opcode is None
       node = ModRMNode(sizes[0], sizes[1], 0)
+    elif parts == ['rm', 'imm']:
+      node = DftLabel('imm_arg', 'VALUE%i' % size,
+                      ModRMSingleArgNode(sizes[0], modrm_opcode, sizes[1] / 8))
     else:
       xxxx
     top_nodes.append(TrieOfList(bytes, DftLabels([('instr_name', instr_name),
@@ -205,6 +221,7 @@ def GetRoot():
 
   Add('01', 'add', [('rm', 32), ('reg', 32)])
   Add('03', 'add', [('reg', 32), ('rm', 32)])
+  Add('80', 'add', [('rm', 8), ('imm', 8)], modrm_opcode=0)
   Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
   Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
   Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
