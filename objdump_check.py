@@ -35,7 +35,7 @@ def DisassembleTestCallback(get_instructions, bits):
 
 whitespace_regexp = re.compile('\s+')
 comment_regexp = re.compile('\s+#.*$')
-jump_regexp = re.compile('^(jn?[a-z]{1,2}|calll|jmp[lw]?|je?cxz) 0x[0-9a-f]+$')
+jump_regexp = re.compile('^(jn?[a-z]{1,2}|call|jmp[lw]?|je?cxz) 0x[0-9a-f]+$')
 
 
 def NormaliseObjdumpDisasm(disasm):

@@ -245,7 +245,8 @@ def NoMerge(x):
 
 @Memoize
 def ImmediateNode(immediate_size):
-  return TrieOfList(['XX'] * immediate_size, trie.AcceptNode)
+  assert immediate_size in (0, 8, 16, 32), immediate_size
+  return TrieOfList(['XX'] * (immediate_size / 8), trie.AcceptNode)
 
 
 @Memoize
@@ -320,7 +321,7 @@ def GetRoot():
 
   def Add(bytes, instr_name, args, modrm_opcode=None):
     bytes = bytes.split()
-    immediate_size = 0 # Size in bytes
+    immediate_size = 0 # Size in bits
     rm_size = None
     reg_size = None
     out_args = []
@@ -333,7 +334,7 @@ def GetRoot():
     for kind, size in args:
       if kind == 'imm':
         assert immediate_size == 0
-        immediate_size = size / 8
+        immediate_size = size
         SimpleArg('VALUE%i' % size)
       elif kind == 'rm':
         assert rm_size is None
@@ -350,11 +351,11 @@ def GetRoot():
         out_args.append(kind)
       elif kind == 'addr':
         assert immediate_size == 0
-        immediate_size = 4
+        immediate_size = 32
         SimpleArg('ds:VALUE32')
       elif kind == 'jump_dest':
         assert immediate_size == 0
-        immediate_size = size / 8
+        immediate_size = size
         SimpleArg('JUMP_DEST')
       elif kind == '*ax':
         SimpleArg(regs_by_size[size][0][1])
@@ -438,9 +439,38 @@ def GetRoot():
   AddPair(0x84, 'test', ['rm', 'reg'])
   AddPair(0x86, 'xchg', ['rm', 'reg'])
   AddLW(0x8d, 'lea', ['reg', 'lea_mem'])
+  AddLW(0x8f, 'pop', ['rm'], modrm_opcode=0)
 
-  Add('f4', 'hlt', [])
+  # 'nop' is really 'xchg %eax, %eax'.
   Add('90', 'nop', [])
+  # 'pause' is really 'rep nop'.
+  Add('f3 90', 'pause', [])
+  for reg_num in range(8):
+    if reg_num != 0:
+      AddLW(0x90 + reg_num, 'xchg', [('fixreg', reg_num), '*ax'])
+
+  # "Convert word to long".  Sign-extends %ax into %eax.
+  Add('98', 'cwde', [])
+  # "Convert byte to word".  Sign-extends %al into %ax.
+  Add('66 98', 'cbw', [])
+  # "Convert long to double long".  Fills %edx with the top bit of %eax.
+  Add('99', 'cdq', [])
+  # "Convert word to double word".  Fills %dx with the top bit of %ax.
+  Add('66 99', 'cwd', [])
+  # Note that assemblers and disassemblers treat 'fwait' as a prefix
+  # such that 'fwait; fnXXX' is a shorthand for 'fXXX'.  (For example,
+  # 'fwait; fnstenv ARG' can be written as 'fstenv ARG'.)  This might
+  # cause cross-check tests to fail if these instructions are placed
+  # together.  Really, though, fwait is an instruction in its own
+  # right.
+  Add('9b', 'fwait', [])
+  Add('9e', 'sahf', [])
+  Add('9f', 'lahf', [])
+  Add('c9', 'leave', [])
+  Add('f4', 'hlt', [])
+
+  Add('e8', 'call', [('jump_dest', 32)])
+
   AddPair(0x88, 'mov', ['rm', 'reg'])
   AddPair(0x8a, 'mov', ['reg', 'rm'])
   AddPair(0xc6, 'mov', ['rm', 'imm'], modrm_opcode=0)
