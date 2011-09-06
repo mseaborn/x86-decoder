@@ -49,6 +49,7 @@ mem_sizes = {
   16: 'WORD PTR ',
   8: 'BYTE PTR ',
   'lea_mem': '',
+  'mem32': 'DWORD PTR ',
   '8byte': 'QWORD PTR ',
   }
 
@@ -143,7 +144,7 @@ def ModRM1(rm_size, tail):
                                  tail)))
     reg2 = 4
     yield (mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail))
-  if rm_size not in ('lea_mem', '8byte'):
+  if rm_size not in ('lea_mem', 'mem32', '8byte'):
     mod = 3
     for reg2, regname2 in regs_by_size[rm_size]:
       yield (mod, reg2, DftLabel('rm_arg', regname2, tail))
@@ -343,6 +344,10 @@ def GetRoot():
         assert rm_size is None
         # For 'lea', the size is really irrelevant.
         rm_size = 'lea_mem'
+        out_args.append('rm')
+      elif kind == 'mem':
+        assert rm_size is None
+        rm_size = 'mem%i' % size
         out_args.append('rm')
       elif kind == 'reg':
         assert reg_size is None
@@ -580,6 +585,10 @@ def GetRoot():
     # xchgw could be used for swapping bytes in a word instead),
     # although objdump decodes such instructions.
     Add('0f ' + Byte(0xc8 + reg_num), 'bswap', [(('fixreg', reg_num), 32)])
+
+  # SSE
+  Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
+  Add('0f ae', 'stmxcsr', [('mem', 32)], modrm_opcode=3)
 
   return MergeMany(top_nodes, NoMerge)
 
