@@ -49,6 +49,7 @@ mem_sizes = {
   16: 'WORD PTR ',
   8: 'BYTE PTR ',
   'lea_mem': '',
+  '8byte': 'QWORD PTR ',
   }
 
 cond_codes = (
@@ -142,7 +143,7 @@ def ModRM1(rm_size, tail):
                                  tail)))
     reg2 = 4
     yield (mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail))
-  if rm_size != 'lea_mem':
+  if rm_size not in ('lea_mem', '8byte'):
     mod = 3
     for reg2, regname2 in regs_by_size[rm_size]:
       yield (mod, reg2, DftLabel('rm_arg', regname2, tail))
@@ -399,6 +400,11 @@ def GetRoot():
     Add(Byte(opcode), instr, SubstSize(format, 8), **kwargs)
     AddLW(opcode + 1, instr, format, **kwargs)
 
+  # Like AddPair(), but also takes a prefix.
+  def AddPair2(prefix, opcode, instr, format, **kwargs):
+    Add(prefix + ' ' + Byte(opcode), instr, SubstSize(format, 8), **kwargs)
+    AddLW2(prefix + ' ' + Byte(opcode + 1), instr, format, **kwargs)
+
   # Arithmetic instructions
   for arith_opcode, instr in enumerate(['add', 'or', 'adc', 'sbb',
                                         'and', 'sub', 'xor', 'cmp']):
@@ -547,11 +553,36 @@ def GetRoot():
   AddLW2('0f ba', 'btr', ['rm', 'imm8'], modrm_opcode=6)
   AddLW2('0f ba', 'btc', ['rm', 'imm8'], modrm_opcode=7)
 
+  # Bit shift left/right
+  AddLW2('0f a4', 'shld', ['rm', 'reg', 'imm8'])
+  AddLW2('0f a5', 'shld', ['rm', 'reg', 'cl'])
+  AddLW2('0f ac', 'shrd', ['rm', 'reg', 'imm8'])
+  AddLW2('0f ad', 'shrd', ['rm', 'reg', 'cl'])
+
+  AddLW2('0f af', 'imul', ['reg', 'rm'])
+
+  # Bit scan forwards/reverse
+  AddLW2('0f bc', 'bsf', ['reg', 'rm'])
+  AddLW2('0f bd', 'bsr', ['reg', 'rm'])
+
+  # Move with zero/sign extend.
   Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
   Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
   Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
   Add('0f bf', 'movsx', [('reg', 32), ('rm', 16)])
+
+  # Added in the 486.
+  AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
+  AddPair2('0f', 0xc0, 'xadd', ['rm', 'reg'])
+  Add('0f c7', 'cmpxchg8b', [('rm', '8byte')], modrm_opcode=1)
+  for reg_num in range(8):
+    # bswap is undefined when used with the data16 prefix (because
+    # xchgw could be used for swapping bytes in a word instead),
+    # although objdump decodes such instructions.
+    Add('0f ' + Byte(0xc8 + reg_num), 'bswap', [(('fixreg', reg_num), 32)])
+
   return MergeMany(top_nodes, NoMerge)
+
 
 def InstrFromLabels(args):
   instr_args = ', '.join([args['%s_arg' % arg] for arg in args['args']])
