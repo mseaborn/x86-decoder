@@ -258,16 +258,14 @@ def ModRMNode(reg_size, rm_size, immediate_size):
                        for key, value in node.children.iteritems()))
 
 
-@Memoize
-def ModRMSingleArgNode(rm_size, opcode, instr_name, immediate_size):
+def ModRMSingleArgNode(rm_size, opcode, labels, immediate_size):
   nodes = list(ModRMSingleArg(rm_size, opcode, ImmediateNode(immediate_size)))
   node = MergeMany(nodes, NoMerge)
   def Filter(byte):
     mod, reg1, reg2 = CatBitsRev(byte, [2, 3, 3])
     return (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
   return TrieNode(dict((key, DftLabel('test_keep', Filter(int(key, 16)),
-                                      DftLabel('instr_name', instr_name,
-                                               value)))
+                                      DftLabels(labels, value)))
                        for key, value in node.children.iteritems()))
 
 
@@ -368,22 +366,23 @@ def GetRoot():
       else:
         raise AssertionError('Unknown arg type: %s' % repr(kind))
 
+    labels.append(('args', out_args))
+    labels.append(('instr_name', instr_name))
+
     if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
       node = ModRMNode(reg_size, rm_size, immediate_size)
     elif rm_size is not None and reg_size is None:
       assert modrm_opcode is not None
-      node = ModRMSingleArgNode(rm_size, modrm_opcode, instr_name,
+      node = ModRMSingleArgNode(rm_size, modrm_opcode, labels,
                                 immediate_size)
+      labels = []
     elif rm_size is None and reg_size is None:
       assert modrm_opcode is None
       node = ImmediateNode(immediate_size)
     else:
       raise AssertionError('Unknown type')
     node = DftLabels(labels, node)
-    node = DftLabel('args', out_args, node)
-    if modrm_opcode is None:
-      node = DftLabel('instr_name', instr_name, node)
     top_nodes.append(TrieOfList(bytes, node))
 
   def AddLW(opcode, instr, format, **kwargs):
@@ -493,8 +492,7 @@ def GetRoot():
   Add('fd', 'std', []), # Set direction flag
 
   # Group 3
-  # TODO:
-  # AddPair(0xf6, 'test', ['rm', 'imm'], modrm_opcode=0)
+  AddPair(0xf6, 'test', ['rm', 'imm'], modrm_opcode=0)
   for instr, modrm_opcode in [('not', 2),
                               ('neg', 3),
                               ('mul', 4),
