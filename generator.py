@@ -8,35 +8,9 @@ def Byte(x):
   return '%02x' % x
 
 
-regs32 = (
-  (0, 'eax'),
-  (1, 'ecx'),
-  (2, 'edx'),
-  (3, 'ebx'),
-  (4, 'esp'),
-  (5, 'ebp'),
-  (6, 'esi'),
-  (7, 'edi'))
-
-regs16 = (
-  (0, 'ax'),
-  (1, 'cx'),
-  (2, 'dx'),
-  (3, 'bx'),
-  (4, 'sp'),
-  (5, 'bp'),
-  (6, 'si'),
-  (7, 'di'))
-
-regs8 = (
-  (0, 'al'),
-  (1, 'cl'),
-  (2, 'dl'),
-  (3, 'bl'),
-  (4, 'ah'),
-  (5, 'ch'),
-  (6, 'dh'),
-  (7, 'bh'))
+regs32 = ('eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi')
+regs16 = ('ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di')
+regs8 = ('al', 'cl', 'dl', 'bl', 'ah', 'ch', 'dh', 'bh')
 
 regs_by_size = {
   32: regs32,
@@ -86,7 +60,7 @@ def CatBitsRev(value, sizes_in_bits):
 @Memoize
 def Sib(mod, rm_size, disp_size, disp_str, tail):
   nodes = []
-  for index_reg, index_regname in regs32:
+  for index_reg, index_regname in enumerate(regs32):
     if index_reg == 4:
       # %esp is not accepted in the position '(reg, %esp)'.
       # In this context, register 4 is %eiz (an always-zero value).
@@ -94,7 +68,7 @@ def Sib(mod, rm_size, disp_size, disp_str, tail):
     for scale in (0, 1, 2, 3):
       # 5 is a special case and is not always %ebp.
       # %esi/%edi are missing from headings in table in doc.
-      for base_reg, base_regname in regs32:
+      for base_reg, base_regname in enumerate(regs32):
         if index_regname == 'eiz' and base_regname == 'esp' and scale == 0:
           index_result = ''
         else:
@@ -130,7 +104,7 @@ def ModRM1(rm_size, tail):
   for mod, dispsize, disp_str in ((0, 0, ''),
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
-    for reg2, regname2 in regs32:
+    for reg2, regname2 in enumerate(regs32):
       if reg2 == 4:
         # %esp is not accepted in this position.
         # 4 is a special value: adds SIB byte.
@@ -146,12 +120,12 @@ def ModRM1(rm_size, tail):
     yield (mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail))
   if rm_size not in ('lea_mem', 'mem32', '8byte'):
     mod = 3
-    for reg2, regname2 in regs_by_size[rm_size]:
+    for reg2, regname2 in enumerate(regs_by_size[rm_size]):
       yield (mod, reg2, DftLabel('rm_arg', regname2, tail))
 
 
 def ModRM(reg_size, rm_size, tail):
-  for reg, regname in regs_by_size[reg_size]:
+  for reg, regname in enumerate(regs_by_size[reg_size]):
     for mod, reg2, node in ModRM1(rm_size, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
                        DftLabel('reg_arg', regname, node))
@@ -362,11 +336,11 @@ def GetRoot():
         immediate_size = size
         SimpleArg('JUMP_DEST')
       elif kind == '*ax':
-        SimpleArg(regs_by_size[size][0][1])
+        SimpleArg(regs_by_size[size][0])
       elif kind in ('1', 'cl'):
         SimpleArg(kind)
       elif isinstance(kind, tuple) and len(kind) == 2 and kind[0] == 'fixreg':
-        SimpleArg(regs_by_size[size][kind[1]][1])
+        SimpleArg(regs_by_size[size][kind[1]])
       elif kind in ('es:[edi]', 'ds:[esi]'):
         SimpleArg(mem_sizes[size] + kind)
       else:
