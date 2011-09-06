@@ -389,6 +389,12 @@ def GetRoot():
     Add('66 ' + Byte(opcode), instr, SubstSize(format, 16), **kwargs)
     Add(Byte(opcode), instr, SubstSize(format, 32), **kwargs)
 
+  # Like AddLW(), but takes a string rather than an int.
+  # TODO: Unify these.
+  def AddLW2(opcode, instr, format, **kwargs):
+    Add('66 ' + opcode, instr, SubstSize(format, 16), **kwargs)
+    Add(opcode, instr, SubstSize(format, 32), **kwargs)
+
   def AddPair(opcode, instr, format, **kwargs):
     Add(Byte(opcode), instr, SubstSize(format, 8), **kwargs)
     AddLW(opcode + 1, instr, format, **kwargs)
@@ -501,6 +507,15 @@ def GetRoot():
                               ('idiv', 7)]:
     AddPair(0xf6, instr, ['rm'], modrm_opcode=modrm_opcode)
 
+  # Group 4/5
+  AddPair(0xfe, 'inc', ['rm'], modrm_opcode=0)
+  AddPair(0xfe, 'dec', ['rm'], modrm_opcode=1)
+  # Group 5
+  AddLW(0xff, 'push', ['rm'], modrm_opcode=6)
+  # TODO: We don't want to allow the data16 prefix on jmp/call.
+  AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
+  AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
+
   AddPair(0x88, 'mov', ['rm', 'reg'])
   AddPair(0x8a, 'mov', ['reg', 'rm'])
   AddPair(0xc6, 'mov', ['rm', 'imm'], modrm_opcode=0)
@@ -509,6 +524,29 @@ def GetRoot():
   for reg_num in range(8):
     Add(Byte(0xb0 + reg_num), 'mov', [(('fixreg', reg_num), 8), ('imm', 8)])
     AddLW(0xb8 + reg_num, 'mov', [('fixreg', reg_num), 'imm'])
+
+  # Two-byte opcodes.
+
+  for cond_num, cond_name in enumerate(cond_codes):
+    # Conditional move.  Added in P6.
+    AddLW2('0f ' + Byte(0x40 + cond_num), 'cmov' + cond_name, ['reg', 'rm'])
+    # 4-byte offset jumps.
+    Add('0f ' + Byte(0x80 + cond_num), 'j' + cond_name, [('jump_dest', 32)])
+    # Byte set on condition
+    Add('0f ' + Byte(0x90 + cond_num), 'set' + cond_name, [('rm', 8)],
+        modrm_opcode=0)
+
+  # Bit test/set/clear operations
+  AddLW2('0f a3', 'bt', ['rm', 'reg'])
+  AddLW2('0f ab', 'bts', ['rm', 'reg'])
+  AddLW2('0f b3', 'btr', ['rm', 'reg'])
+  AddLW2('0f bb', 'btc', ['rm', 'reg'])
+  # Group 8
+  AddLW2('0f ba', 'bt', ['rm', 'imm8'], modrm_opcode=4)
+  AddLW2('0f ba', 'bts', ['rm', 'imm8'], modrm_opcode=5)
+  AddLW2('0f ba', 'btr', ['rm', 'imm8'], modrm_opcode=6)
+  AddLW2('0f ba', 'btc', ['rm', 'imm8'], modrm_opcode=7)
+
   Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
   Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
   Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
