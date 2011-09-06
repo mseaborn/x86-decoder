@@ -508,11 +508,11 @@ def GetRoot():
   AddLW(0xe9, 'jmp', ['jump_dest'])
   Add('eb', 'jmp', [('jump_dest', 8)])
 
-  Add('f5', 'cmc', []), # Complement carry flag
-  Add('f8', 'clc', []), # Clear carry flag
-  Add('f9', 'stc', []), # Set carry flag
-  Add('fc', 'cld', []), # Clear direction flag
-  Add('fd', 'std', []), # Set direction flag
+  Add('f5', 'cmc', []) # Complement carry flag
+  Add('f8', 'clc', []) # Clear carry flag
+  Add('f9', 'stc', []) # Set carry flag
+  Add('fc', 'cld', []) # Clear direction flag
+  Add('fd', 'std', []) # Set direction flag
 
   # Group 3
   AddPair(0xf6, 'test', ['rm', 'imm'], modrm_opcode=0)
