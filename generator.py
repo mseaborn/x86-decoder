@@ -1,6 +1,7 @@
 
 import subprocess
-import objdump
+
+from memoize import Memoize
 
 
 def Byte(x):
@@ -80,7 +81,9 @@ def CatBitsRev(value, sizes_in_bits):
   return tuple(parts)
 
 
-def Sib(mod):
+@Memoize
+def Sib(mod, rm_size, disp_size, disp_str, tail):
+  nodes = []
   for index_reg, index_regname in regs32:
     if index_reg == 4:
       # %esp is not accepted in the position '(reg, %esp)'.
@@ -101,8 +104,15 @@ def Sib(mod):
         else:
           extra = ''
           extra2 = []
-        parts = [base_regname, index_result, extra]
-        yield [Byte((scale << 6) | (index_reg << 3) | base_reg)] + extra2, parts
+        parts = [base_regname, index_result, extra, disp_str]
+        bytes = ([Byte((scale << 6) | (index_reg << 3) | base_reg)]
+                 + extra2
+                 + ['XX'] * disp_size)
+        nodes.append(TrieOfList(bytes,
+                                DftLabel('rm_arg',
+                                         FormatMemAccess(rm_size, parts),
+                                         tail)))
+  return MergeMany(nodes, NoMerge)
 
 
 def FormatMemAccess(size, parts):
@@ -110,8 +120,11 @@ def FormatMemAccess(size, parts):
   return '%s[%s]' % (mem_sizes[size], '+'.join(parts))
 
 
-def ModRM1(rm_size):
-  yield (0, 5, ['XX'] * 4, '%sds:VALUE32' % mem_sizes[rm_size])
+def ModRM1(rm_size, tail):
+  yield (0, 5, TrieOfList(['XX'] * 4,
+                          DftLabel('rm_arg',
+                                   '%sds:VALUE32' % mem_sizes[rm_size],
+                                   tail)))
   for mod, dispsize, disp_str in ((0, 0, ''),
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
@@ -122,27 +135,29 @@ def ModRM1(rm_size):
         continue
       if reg2 == 5 and mod == 0:
         continue
-      yield (mod, reg2, ['XX'] * dispsize,
-             FormatMemAccess(rm_size, [regname2, disp_str]))
+      yield (mod, reg2,
+             TrieOfList(['XX'] * dispsize,
+                        DftLabel('rm_arg', 
+                                 FormatMemAccess(rm_size, [regname2, disp_str]),
+                                 tail)))
     reg2 = 4
-    for sib_bytes, desc in Sib(mod):
-      yield (mod, reg2, sib_bytes + ['XX'] * dispsize,
-             FormatMemAccess(rm_size, desc + [disp_str]))
+    yield (mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail))
   if rm_size != 'lea_mem':
     mod = 3
     for reg2, regname2 in regs_by_size[rm_size]:
-      yield (mod, reg2, [], regname2)
+      yield (mod, reg2, DftLabel('rm_arg', regname2, tail))
 
 
-def ModRM(reg_size, rm_size):
+def ModRM(reg_size, rm_size, tail):
   for reg, regname in regs_by_size[reg_size]:
-    for mod, reg2, rest, desc in ModRM1(rm_size):
-      yield ([Byte((mod << 6) | (reg << 3) | reg2)] + rest, regname, desc)
+    for mod, reg2, node in ModRM1(rm_size, tail):
+      yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
+                       DftLabel('reg_arg', regname, node))
 
 
-def ModRMSingleArg(arg_regs, opcode):
-  for mod, reg2, rest, desc in ModRM1(arg_regs):
-    yield ([Byte((mod << 6) | (opcode << 3) | reg2)] + rest, desc)
+def ModRMSingleArg(arg_regs, opcode, tail):
+  for mod, reg2, node in ModRM1(arg_regs, tail):
+    yield TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)], node)
 
 
 def TrieNode(children, accept=False):
@@ -204,8 +219,6 @@ def MergeMany(nodes, merge_accept_types):
   return trie.MakeInterned(children, accept)
 
 
-from memoize import Memoize
-
 def TrieSize(start_node, expand_wildcards):
   @Memoize
   def Rec(node):
@@ -231,13 +244,13 @@ def NoMerge(x):
 
 
 @Memoize
+def ImmediateNode(immediate_size):
+  return TrieOfList(['XX'] * immediate_size, trie.AcceptNode)
+
+
+@Memoize
 def ModRMNode(reg_size, rm_size, immediate_size):
-  nodes = []
-  tail = TrieOfList(['XX'] * immediate_size, trie.AcceptNode)
-  for bytes, reg_arg, rm_arg in ModRM(reg_size, rm_size):
-    nodes.append(TrieOfList(bytes,
-                            DftLabels([('reg_arg', reg_arg),
-                                       ('rm_arg', rm_arg)], tail)))
+  nodes = list(ModRM(reg_size, rm_size, ImmediateNode(immediate_size)))
   node = MergeMany(nodes, NoMerge)
   return TrieNode(dict((key, DftLabel('test_keep', key == '00' or key == 'ff',
                                       value))
@@ -246,11 +259,7 @@ def ModRMNode(reg_size, rm_size, immediate_size):
 
 @Memoize
 def ModRMSingleArgNode(rm_size, opcode, instr_name, immediate_size):
-  nodes = []
-  tail = TrieOfList(['XX'] * immediate_size, trie.AcceptNode)
-  for bytes, rm_arg in ModRMSingleArg(rm_size, opcode):
-    nodes.append(TrieOfList(bytes,
-                            DftLabels([('rm_arg', rm_arg)], tail)))
+  nodes = list(ModRMSingleArg(rm_size, opcode, ImmediateNode(immediate_size)))
   node = MergeMany(nodes, NoMerge)
   def Filter(byte):
     mod, reg1, reg2 = CatBitsRev(byte, [2, 3, 3])
@@ -365,7 +374,7 @@ def GetRoot():
                                 immediate_size)
     elif rm_size is None and reg_size is None:
       assert modrm_opcode is None
-      node = TrieOfList(['XX'] * immediate_size, trie.AcceptNode)
+      node = ImmediateNode(immediate_size)
     else:
       raise AssertionError('Unknown type')
     node = DftLabels(labels, node)
