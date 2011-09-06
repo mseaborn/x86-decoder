@@ -490,11 +490,17 @@ def GetRoot():
   Add('e8', 'call', [('jump_dest', 32)])
 
   # String operations.
-  AddPair(0xa4, 'movs', ['es:[edi]', 'ds:[esi]'])
-  AddPair(0xa6, 'cmps', ['ds:[esi]', 'es:[edi]'])
-  AddPair(0xaa, 'stos', ['es:[edi]', '*ax'])
-  AddPair(0xac, 'lods', ['*ax', 'ds:[esi]'])
-  AddPair(0xae, 'scas', ['*ax', 'es:[edi]'])
+  for prefix_bytes, prefix in [('', ''),
+                               ('f2', 'repnz '),
+                               ('f3', 'rep ')]:
+    AddPair2(prefix_bytes, 0xa4, prefix + 'movs', ['es:[edi]', 'ds:[esi]'])
+    AddPair2(prefix_bytes, 0xaa, prefix + 'stos', ['es:[edi]', '*ax'])
+    AddPair2(prefix_bytes, 0xac, prefix + 'lods', ['*ax', 'ds:[esi]'])
+  for prefix_bytes, prefix in [('', ''),
+                               ('f2', 'repnz '),
+                               ('f3', 'repz ')]:
+    AddPair2(prefix_bytes, 0xa6, prefix + 'cmps', ['ds:[esi]', 'es:[edi]'])
+    AddPair2(prefix_bytes, 0xae, prefix + 'scas', ['*ax', 'es:[edi]'])
 
   AddPair(0xa8, 'test', ['*ax', 'imm'])
 
