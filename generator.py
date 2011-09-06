@@ -16,6 +16,7 @@ regs_by_size = {
   32: regs32,
   16: regs16,
   8: regs8,
+  'x87': ['st(%i)' % regnum for regnum in range(8)],
   }
 
 mem_sizes = {
@@ -23,8 +24,11 @@ mem_sizes = {
   16: 'WORD PTR ',
   8: 'BYTE PTR ',
   'lea_mem': '',
+  'other_x87_size': '',
   'mem32': 'DWORD PTR ',
   '8byte': 'QWORD PTR ',
+  'mem64': 'QWORD PTR ',
+  'mem80': 'TBYTE PTR ',
   }
 
 cond_codes = (
@@ -96,7 +100,7 @@ def FormatMemAccess(size, parts):
   return '%s[%s]' % (mem_sizes[size], '+'.join(parts))
 
 
-def ModRM1(rm_size, tail):
+def ModRMMem(rm_size, tail):
   yield (0, 5, TrieOfList(['XX'] * 4,
                           DftLabel('rm_arg',
                                    '%sds:VALUE32' % mem_sizes[rm_size],
@@ -118,10 +122,20 @@ def ModRM1(rm_size, tail):
                                  tail)))
     reg2 = 4
     yield (mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail))
+
+
+def ModRMReg(rm_size, tail):
   if rm_size not in ('lea_mem', 'mem32', '8byte'):
     mod = 3
     for reg2, regname2 in enumerate(regs_by_size[rm_size]):
       yield (mod, reg2, DftLabel('rm_arg', regname2, tail))
+
+
+def ModRM1(rm_size, tail):
+  for result in ModRMMem(rm_size, tail):
+    yield result
+  for result in ModRMReg(rm_size, tail):
+    yield result
 
 
 def ModRM(reg_size, rm_size, tail):
@@ -131,8 +145,8 @@ def ModRM(reg_size, rm_size, tail):
                        DftLabel('reg_arg', regname, node))
 
 
-def ModRMSingleArg(arg_regs, opcode, tail):
-  for mod, reg2, node in ModRM1(arg_regs, tail):
+def ModRMSingleArg(rm_size, opcode, tail):
+  for mod, reg2, node in ModRM1(rm_size, tail):
     yield TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)], node)
 
 
@@ -365,6 +379,40 @@ def GetRoot():
     node = DftLabels(labels, node)
     top_nodes.append(TrieOfList(bytes, node))
 
+  def AddFPMem(bytes, instr_name, modrm_opcode, size=32):
+    labels = [('instr_name', instr_name),
+              ('args', ['rm'])]
+    nodes = []
+    for mod, reg2, node in ModRMMem(size, trie.AcceptNode):
+      nodes.append(TrieOfList([Byte((mod << 6) | (modrm_opcode << 3) | reg2)],
+                              DftLabel('test_keep', mod == 0 and reg2 == 0,
+                                       DftLabels(labels, node))))
+    node = MergeMany(nodes, NoMerge)
+    top_nodes.append(TrieOfList(bytes.split(), node))
+
+  def AddFPReg(bytes, instr_name, modrm_opcode, format='st reg'):
+    labels = [('instr_name', instr_name),
+              ('st_arg', 'st')]
+    if format == 'st reg':
+      labels.append(('args', ['st', 'rm']))
+    elif format == 'reg st':
+      labels.append(('args', ['rm', 'st']))
+    elif format == 'reg':
+      labels.append(('args', ['rm']))
+    else:
+      raise AssertionError('Unrecognised format: %s' % repr(format))
+    nodes = []
+    for mod, reg2, node in ModRMReg('x87', trie.AcceptNode):
+      nodes.append(TrieOfList([Byte((mod << 6) | (modrm_opcode << 3) | reg2)],
+                              DftLabel('test_keep', reg2 == 0,
+                                       DftLabels(labels, node))))
+    node = MergeMany(nodes, NoMerge)
+    top_nodes.append(TrieOfList(bytes.split(), node))
+
+  def AddFPRM(bytes, instr_name, modrm_opcode, format='st reg', size=32):
+    AddFPMem(bytes, instr_name, modrm_opcode, size)
+    AddFPReg(bytes, instr_name, modrm_opcode, format)
+
   def AddLW(opcode, instr, format, **kwargs):
     Add('66 ' + Byte(opcode), instr, SubstSize(format, 16), **kwargs)
     Add(Byte(opcode), instr, SubstSize(format, 32), **kwargs)
@@ -569,6 +617,154 @@ def GetRoot():
   # SSE
   Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
   Add('0f ae', 'stmxcsr', [('mem', 32)], modrm_opcode=3)
+
+  # x87 floating point instructions.
+
+  AddFPRM('d8', 'fadd', modrm_opcode=0)
+  AddFPRM('d8', 'fmul', modrm_opcode=1)
+  AddFPRM('d8', 'fcom', modrm_opcode=2, format='reg')
+  AddFPRM('d8', 'fcomp', modrm_opcode=3, format='reg')
+  AddFPRM('d8', 'fsub', modrm_opcode=4)
+  AddFPRM('d8', 'fsubr', modrm_opcode=5)
+  AddFPRM('d8', 'fdiv', modrm_opcode=6)
+  AddFPRM('d8', 'fdivr', modrm_opcode=7)
+
+  AddFPMem('d9', 'fld', modrm_opcode=0)
+  # skip 1
+  AddFPMem('d9', 'fst', modrm_opcode=2)
+  AddFPMem('d9', 'fstp', modrm_opcode=3)
+  AddFPMem('d9', 'fldenv', modrm_opcode=4, size='other_x87_size')
+  AddFPMem('d9', 'fldcw', modrm_opcode=5, size=16)
+  AddFPMem('d9', 'fnstenv', modrm_opcode=6, size='other_x87_size')
+  AddFPMem('d9', 'fnstcw', modrm_opcode=7, size=16)
+
+  AddFPReg('d9', 'fld', modrm_opcode=0, format='reg')
+  AddFPReg('d9', 'fxch', modrm_opcode=1, format='reg')
+  # /2:
+  Add('d9 d0', 'fnop', [])
+  # /4:
+  Add('d9 e0', 'fchs', [])
+  Add('d9 e1', 'fabs', [])
+  # invalid: e2
+  # invalid: e3
+  Add('d9 e4', 'ftst', [])
+  Add('d9 e5', 'fxam', [])
+  # invalid: e6
+  # invalid: e7
+  # /5:
+  Add('d9 e8', 'fld1', [])
+  Add('d9 e9', 'fldl2t', [])
+  Add('d9 ea', 'fldl2e', [])
+  Add('d9 eb', 'fldpi', [])
+  Add('d9 ec', 'fldlg2', [])
+  Add('d9 ed', 'fldln2', [])
+  Add('d9 ee', 'fldz', [])
+  # invalid: ef
+  # /6:
+  Add('d9 f0', 'f2xm1', [])
+  Add('d9 f1', 'fyl2x', [])
+  Add('d9 f2', 'fptan', [])
+  Add('d9 f3', 'fpatan', [])
+  Add('d9 f4', 'fxtract', [])
+  Add('d9 f5', 'fprem1', [])
+  Add('d9 f6', 'fdecstp', [])
+  Add('d9 f7', 'fincstp', [])
+  # /7:
+  Add('d9 f8', 'fprem', [])
+  Add('d9 f9', 'fyl2xp1', [])
+  Add('d9 fa', 'fsqrt', [])
+  Add('d9 fb', 'fsincos', [])
+  Add('d9 fc', 'frndint', [])
+  Add('d9 fd', 'fscale', [])
+  Add('d9 fe', 'fsin', [])
+  Add('d9 ff', 'fcos', [])
+
+  AddFPMem('da', 'fiadd', modrm_opcode=0)
+  AddFPMem('da', 'fimul', modrm_opcode=1)
+  AddFPMem('da', 'ficom', modrm_opcode=2)
+  AddFPMem('da', 'ficomp', modrm_opcode=3)
+  AddFPMem('da', 'fisub', modrm_opcode=4)
+  AddFPMem('da', 'fisubr', modrm_opcode=5)
+  AddFPMem('da', 'fidiv', modrm_opcode=6)
+  AddFPMem('da', 'fidivr', modrm_opcode=7)
+
+  AddFPReg('da', 'fcmovb', modrm_opcode=0)
+  AddFPReg('da', 'fcmove', modrm_opcode=1)
+  AddFPReg('da', 'fcmovbe', modrm_opcode=2)
+  AddFPReg('da', 'fcmovu', modrm_opcode=3)
+  Add('da e9', 'fucompp', [])
+
+  AddFPMem('db', 'fild', modrm_opcode=0)
+  AddFPMem('db', 'fisttp', modrm_opcode=1)
+  AddFPMem('db', 'fist', modrm_opcode=2)
+  AddFPMem('db', 'fistp', modrm_opcode=3)
+  # skip 4 and 6
+  AddFPMem('db', 'fld', modrm_opcode=5, size='mem80')
+  AddFPMem('db', 'fstp', modrm_opcode=7, size='mem80')
+
+  AddFPReg('db', 'fcmovnb', modrm_opcode=0)
+  AddFPReg('db', 'fcmovne', modrm_opcode=1)
+  AddFPReg('db', 'fcmovnbe', modrm_opcode=2)
+  AddFPReg('db', 'fcmovnu', modrm_opcode=3)
+  # /4:
+  Add('db e2', 'fnclex', [])
+  Add('db e3', 'fninit', [])
+  AddFPReg('db', 'fucomi', modrm_opcode=5)
+  AddFPReg('db', 'fcomi', modrm_opcode=6)
+
+  AddFPRM('dc', 'fadd', modrm_opcode=0, size='mem64', format='reg st')
+  AddFPRM('dc', 'fmul', modrm_opcode=1, size='mem64', format='reg st')
+  AddFPMem('dc', 'fcom', modrm_opcode=2, size='mem64')
+  AddFPMem('dc', 'fcomp', modrm_opcode=3, size='mem64')
+  AddFPRM('dc', 'fsub', modrm_opcode=4, size='mem64', format='reg st')
+  AddFPRM('dc', 'fsubr', modrm_opcode=5, size='mem64', format='reg st')
+  AddFPRM('dc', 'fdiv', modrm_opcode=6, size='mem64', format='reg st')
+  AddFPRM('dc', 'fdivr', modrm_opcode=7, size='mem64', format='reg st')
+
+  AddFPMem('dd', 'fld', modrm_opcode=0, size='mem64')
+  AddFPMem('dd', 'fisttp', modrm_opcode=1, size='mem64')
+  AddFPRM('dd', 'fst', modrm_opcode=2, size='mem64', format='reg')
+  AddFPRM('dd', 'fstp', modrm_opcode=3, size='mem64', format='reg')
+  AddFPMem('dd', 'frstor', modrm_opcode=4, size='other_x87_size')
+  # skip 5
+  AddFPMem('dd', 'fnsave', modrm_opcode=6, size='other_x87_size')
+  AddFPMem('dd', 'fnstsw', modrm_opcode=7, size=16)
+  AddFPReg('dd', 'ffree', modrm_opcode=0, format='reg')
+  # skip 1, 6, 7
+  AddFPReg('dd', 'fucom', modrm_opcode=4, format='reg')
+  AddFPReg('dd', 'fucomp', modrm_opcode=5, format='reg')
+
+  AddFPMem('de', 'fiadd', modrm_opcode=0, size=16)
+  AddFPMem('de', 'fimul', modrm_opcode=1, size=16)
+  AddFPMem('de', 'ficom', modrm_opcode=2, size=16)
+  AddFPMem('de', 'ficomp', modrm_opcode=3, size=16)
+  AddFPMem('de', 'fisub', modrm_opcode=4, size=16)
+  AddFPMem('de', 'fisubr', modrm_opcode=5, size=16)
+  AddFPMem('de', 'fidiv', modrm_opcode=6, size=16)
+  AddFPMem('de', 'fidivr', modrm_opcode=7, size=16)
+
+  AddFPReg('de', 'faddp', modrm_opcode=0, format='reg st')
+  AddFPReg('de', 'fmulp', modrm_opcode=1, format='reg st')
+  # skip 2
+  Add('de d9', 'fcompp', [])
+  AddFPReg('de', 'fsubp', modrm_opcode=4, format='reg st')
+  AddFPReg('de', 'fsubrp', modrm_opcode=5, format='reg st')
+  AddFPReg('de', 'fdivp', modrm_opcode=6, format='reg st')
+  AddFPReg('de', 'fdivrp', modrm_opcode=7, format='reg st')
+
+  AddFPMem('df', 'fild', modrm_opcode=0, size=16)
+  AddFPMem('df', 'fisttp', modrm_opcode=1, size=16)
+  AddFPMem('df', 'fist', modrm_opcode=2, size=16)
+  AddFPMem('df', 'fistp', modrm_opcode=3, size=16)
+  AddFPMem('df', 'fbld', modrm_opcode=4, size='mem80')
+  AddFPMem('df', 'fild', modrm_opcode=5, size='mem64')
+  AddFPMem('df', 'fbstp', modrm_opcode=6, size='mem80')
+  AddFPMem('df', 'fistp', modrm_opcode=7, size='mem64')
+  # skip 0-3
+  Add('df e0', 'fnstsw', [('*ax', 16)])
+  AddFPReg('df', 'fucomip', modrm_opcode=5)
+  AddFPReg('df', 'fcomip', modrm_opcode=6)
+  # skip 7
 
   return MergeMany(top_nodes, NoMerge)
 
