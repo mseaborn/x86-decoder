@@ -363,6 +363,8 @@ def GetRoot():
         SimpleArg(kind)
       elif isinstance(kind, tuple) and len(kind) == 2 and kind[0] == 'fixreg':
         SimpleArg(regs_by_size[size][kind[1]][1])
+      elif kind in ('es:[edi]', 'ds:[esi]'):
+        SimpleArg(mem_sizes[size] + kind)
       else:
         raise AssertionError('Unknown arg type: %s' % repr(kind))
 
@@ -470,6 +472,36 @@ def GetRoot():
   Add('f4', 'hlt', [])
 
   Add('e8', 'call', [('jump_dest', 32)])
+
+  # String operations.
+  AddPair(0xa4, 'movs', ['es:[edi]', 'ds:[esi]'])
+  AddPair(0xa6, 'cmps', ['ds:[esi]', 'es:[edi]'])
+  AddPair(0xaa, 'stos', ['es:[edi]', '*ax'])
+  AddPair(0xac, 'lods', ['*ax', 'ds:[esi]'])
+  AddPair(0xae, 'scas', ['*ax', 'es:[edi]'])
+
+  AddPair(0xa8, 'test', ['*ax', 'imm'])
+
+  Add('e3', 'jecxz', [('jump_dest', 8)])
+  AddLW(0xe9, 'jmp', ['jump_dest'])
+  Add('eb', 'jmp', [('jump_dest', 8)])
+
+  Add('f5', 'cmc', []), # Complement carry flag
+  Add('f8', 'clc', []), # Clear carry flag
+  Add('f9', 'stc', []), # Set carry flag
+  Add('fc', 'cld', []), # Clear direction flag
+  Add('fd', 'std', []), # Set direction flag
+
+  # Group 3
+  # TODO:
+  # AddPair(0xf6, 'test', ['rm', 'imm'], modrm_opcode=0)
+  for instr, modrm_opcode in [('not', 2),
+                              ('neg', 3),
+                              ('mul', 4),
+                              ('imul', 5),
+                              ('div', 6),
+                              ('idiv', 7)]:
+    AddPair(0xf6, instr, ['rm'], modrm_opcode=modrm_opcode)
 
   AddPair(0x88, 'mov', ['rm', 'reg'])
   AddPair(0x8a, 'mov', ['reg', 'rm'])
