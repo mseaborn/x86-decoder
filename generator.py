@@ -93,7 +93,7 @@ def Sib(mod, rm_size, disp_size, disp_str, tail):
         nodes.append(TrieOfList(bytes,
                                 DftLabel('rm_arg',
                                          FormatMemAccess(rm_size, parts),
-                                         tail)))
+                                         DftLabel('mem_access', None, tail))))
   return MergeMany(nodes, NoMerge)
 
 
@@ -106,7 +106,7 @@ def ModRMMem(rm_size, tail):
   yield (0, 5, TrieOfList(['XX'] * 4,
                           DftLabel('rm_arg',
                                    '%sds:VALUE32' % mem_sizes[rm_size],
-                                   tail)))
+                                   DftLabel('mem_access', None, tail))))
   for mod, dispsize, disp_str in ((0, 0, ''),
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
@@ -119,9 +119,9 @@ def ModRMMem(rm_size, tail):
         continue
       yield (mod, reg2,
              TrieOfList(['XX'] * dispsize,
-                        DftLabel('rm_arg', 
+                        DftLabel('rm_arg',
                                  FormatMemAccess(rm_size, [regname2, disp_str]),
-                                 tail)))
+                                 DftLabel('mem_access', None, tail))))
     reg2 = 4
     yield (mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail))
 
@@ -279,6 +279,26 @@ def RemoveLabels(node):
     return trie.MakeInterned(dict((key, RemoveLabels(value))
                                   for key, value in node.children.iteritems()),
                              node.accept)
+
+
+@Memoize
+def UseGsSegment(node, keep=False):
+  if isinstance(node, DftLabel) and node.key == 'mem_access':
+    keep = True
+  if isinstance(node, DftLabel) and node.key == 'rm_arg':
+    # Modifying the string to add 'gs:' is rather hacky, but it is
+    # probably not worth doing it more cleanly, because NaCl has been
+    # changed so that the %gs segment is only 4 bytes, and the
+    # validator will probably be changed to disallow all but the
+    # simplest %gs usage.
+    text = node.value.replace('[', 'gs:[').replace('ds:', 'gs:')
+    return DftLabel('rm_arg', text, UseGsSegment(node.next, keep))
+  elif isinstance(node, DftLabel):
+    return DftLabel(node.key, node.value, UseGsSegment(node.next, keep))
+  else:
+    return TrieNode(dict((key, UseGsSegment(value, keep))
+                         for key, value in node.children.iteritems()),
+                    node.accept and keep)
 
 
 @Memoize
@@ -776,7 +796,9 @@ def GetRoot():
   AddFPReg('df', 'fcomip', modrm_opcode=6)
   # skip 7
 
-  return MergeMany(top_nodes, NoMerge)
+  root = MergeMany(top_nodes, NoMerge)
+  with_gs = TrieOfList(['65'], UseGsSegment(root))
+  return MergeMany([root, with_gs], NoMerge)
 
 
 def ExpandArg((do_expand, arg), label_map):
@@ -808,8 +830,12 @@ def Main():
   objdump_check.DisassembleTest(lambda: GetAll(filtered_trie), bits=32)
 
   print 'Testing all ModRM bytes...'
-  objdump_check.DisassembleTest(lambda: GetAll(FilterPrefix(['01'], trie_root)),
-                                bits=32)
+  objdump_check.DisassembleTest(
+      lambda: GetAll(FilterPrefix(['01'], trie_root)),
+      bits=32)
+  objdump_check.DisassembleTest(
+      lambda: GetAll(FilterPrefix(['65', '01'], trie_root)),
+      bits=32)
 
   trie.WriteToFile('x86_32.trie', RemoveLabels(trie_root))
 
