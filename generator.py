@@ -608,8 +608,10 @@ def GetRoot():
 
   # Move with zero/sign extend.
   Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
+  Add('66 0f b6', 'movzx', [('reg', 16), ('rm', 8)])
   Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
   Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
+  Add('66 0f be', 'movsx', [('reg', 16), ('rm', 8)])
   Add('0f bf', 'movsx', [('reg', 32), ('rm', 16)])
 
   # Added in the 486.
