@@ -316,8 +316,7 @@ def GetRoot():
     labels = []
 
     def SimpleArg(arg):
-      out_args.append(arg)
-      labels.append(('%s_arg' % arg, arg))
+      out_args.append((False, arg))
 
     for kind, size in args:
       if kind == 'imm':
@@ -327,20 +326,20 @@ def GetRoot():
       elif kind == 'rm':
         assert rm_size is None
         rm_size = size
-        out_args.append(kind)
+        out_args.append((True, kind))
       elif kind == 'lea_mem':
         assert rm_size is None
         # For 'lea', the size is really irrelevant.
         rm_size = 'lea_mem'
-        out_args.append('rm')
+        out_args.append((True, 'rm'))
       elif kind == 'mem':
         assert rm_size is None
         rm_size = 'mem%i' % size
-        out_args.append('rm')
+        out_args.append((True, 'rm'))
       elif kind == 'reg':
         assert reg_size is None
         reg_size = size
-        out_args.append(kind)
+        out_args.append((True, kind))
       elif kind == 'addr':
         assert immediate_size == 0
         immediate_size = 32
@@ -381,7 +380,7 @@ def GetRoot():
 
   def AddFPMem(bytes, instr_name, modrm_opcode, size=32):
     labels = [('instr_name', instr_name),
-              ('args', ['rm'])]
+              ('args', [(True, 'rm')])]
     nodes = []
     for mod, reg2, node in ModRMMem(size, trie.AcceptNode):
       nodes.append(TrieOfList([Byte((mod << 6) | (modrm_opcode << 3) | reg2)],
@@ -391,14 +390,13 @@ def GetRoot():
     top_nodes.append(TrieOfList(bytes.split(), node))
 
   def AddFPReg(bytes, instr_name, modrm_opcode, format='st reg'):
-    labels = [('instr_name', instr_name),
-              ('st_arg', 'st')]
+    labels = [('instr_name', instr_name)]
     if format == 'st reg':
-      labels.append(('args', ['st', 'rm']))
+      labels.append(('args', [(False, 'st'), (True, 'rm')]))
     elif format == 'reg st':
-      labels.append(('args', ['rm', 'st']))
+      labels.append(('args', [(True, 'rm'), (False, 'st')]))
     elif format == 'reg':
-      labels.append(('args', ['rm']))
+      labels.append(('args', [(True, 'rm')]))
     else:
       raise AssertionError('Unrecognised format: %s' % repr(format))
     nodes = []
@@ -769,14 +767,21 @@ def GetRoot():
   return MergeMany(top_nodes, NoMerge)
 
 
-def InstrFromLabels(args):
-  instr_args = ', '.join([args['%s_arg' % arg] for arg in args['args']])
-  return '%s %s' % (args['instr_name'], instr_args)
+def ExpandArg((do_expand, arg), label_map):
+  if do_expand:
+    return label_map['%s_arg' % arg]
+  else:
+    return arg
+
+def InstrFromLabels(label_map):
+  instr_args = ', '.join([ExpandArg(arg, label_map)
+                          for arg in label_map['args']])
+  return '%s %s' % (label_map['instr_name'], instr_args)
 
 def GetAll(node):
   for bytes, labels in FlattenTrie(node):
-    args = dict((label.key, label.value) for label in labels)
-    yield (bytes, InstrFromLabels(args))
+    label_map = dict((label.key, label.value) for label in labels)
+    yield (bytes, InstrFromLabels(label_map))
 
 import objdump_check
 
