@@ -2,6 +2,8 @@
 import subprocess
 
 from memoize import Memoize
+import objdump_check
+import trie
 
 
 def Byte(x):
@@ -226,8 +228,6 @@ def TrieSize(start_node, expand_wildcards):
 
   return Rec(start_node)
 
-
-import trie
 
 def NoMerge(x):
   raise Exception('Cannot merge %r' % x)
@@ -793,20 +793,24 @@ def GetAll(node):
     label_map = dict((label.key, label.value) for label in labels)
     yield (bytes, InstrFromLabels(label_map))
 
-import objdump_check
 
-print 'Building trie...'
-trie_root = GetRoot()
-print 'Size:'
-print TrieSize(trie_root, False)
-print 'Testing...'
-filtered_trie = FilterModRM(trie_root)
-for bytes, labels in GetAll(filtered_trie):
-  print '%s:%s' % (' '.join(bytes), labels)
-objdump_check.DisassembleTest(lambda: GetAll(filtered_trie), bits=32)
+def Main():
+  print 'Building trie...'
+  trie_root = GetRoot()
+  print 'Size:'
+  print TrieSize(trie_root, False)
+  print 'Testing...'
+  filtered_trie = FilterModRM(trie_root)
+  for bytes, labels in GetAll(filtered_trie):
+    print '%s:%s' % (' '.join(bytes), labels)
+  objdump_check.DisassembleTest(lambda: GetAll(filtered_trie), bits=32)
 
-print 'Testing all ModRM bytes...'
-objdump_check.DisassembleTest(lambda: GetAll(FilterPrefix(['01'], trie_root)),
-                              bits=32)
+  print 'Testing all ModRM bytes...'
+  objdump_check.DisassembleTest(lambda: GetAll(FilterPrefix(['01'], trie_root)),
+                                bits=32)
 
-trie.WriteToFile('x86_32.trie', RemoveLabels(trie_root))
+  trie.WriteToFile('x86_32.trie', RemoveLabels(trie_root))
+
+
+if __name__ == '__main__':
+  Main()
