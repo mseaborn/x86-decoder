@@ -272,6 +272,16 @@ def FlattenTrie(node, bytes=[], labels=[]):
 
 
 @Memoize
+def RemoveLabels(node):
+  if isinstance(node, DftLabel):
+    return RemoveLabels(node.next)
+  else:
+    return trie.MakeInterned(dict((key, RemoveLabels(value))
+                                  for key, value in node.children.iteritems()),
+                             node.accept)
+
+
+@Memoize
 def FilterModRM(node):
   if isinstance(node, DftLabel):
     if node.key == 'test_keep' and not node.value:
@@ -798,3 +808,5 @@ objdump_check.DisassembleTest(lambda: GetAll(filtered_trie), bits=32)
 print 'Testing all ModRM bytes...'
 objdump_check.DisassembleTest(lambda: GetAll(FilterPrefix(['01'], trie_root)),
                               bits=32)
+
+trie.WriteToFile('x86_32.trie', RemoveLabels(trie_root))
