@@ -285,14 +285,14 @@ def RemoveLabels(node):
 def UseGsSegment(node, keep=False):
   if isinstance(node, DftLabel) and node.key == 'mem_access':
     keep = True
-  if isinstance(node, DftLabel) and node.key == 'rm_arg':
+  if isinstance(node, DftLabel) and node.key in ('rm_arg', 'mem_arg'):
     # Modifying the string to add 'gs:' is rather hacky, but it is
     # probably not worth doing it more cleanly, because NaCl has been
     # changed so that the %gs segment is only 4 bytes, and the
     # validator will probably be changed to disallow all but the
     # simplest %gs usage.
     text = node.value.replace('[', 'gs:[').replace('ds:', 'gs:')
-    return DftLabel('rm_arg', text, UseGsSegment(node.next, keep))
+    return DftLabel(node.key, text, UseGsSegment(node.next, keep))
   elif isinstance(node, DftLabel):
     return DftLabel(node.key, node.value, UseGsSegment(node.next, keep))
   else:
@@ -373,7 +373,10 @@ def GetRoot():
       elif kind == 'addr':
         assert immediate_size == 0
         immediate_size = 32
-        SimpleArg('ds:VALUE32')
+        # We use mem_arg to allow 'ds:' to be replaced with 'gs:' later.
+        out_args.append((True, 'mem'))
+        labels.append(('mem_arg', 'ds:VALUE32'))
+        labels.append(('mem_access', None))
       elif kind == 'jump_dest':
         assert immediate_size == 0
         immediate_size = size
