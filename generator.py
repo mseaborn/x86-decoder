@@ -459,10 +459,10 @@ def GetRoot():
     AddPair(0xd2, instr, ['rm', 'cl'], modrm_opcode=modrm_opcode)
 
   for reg_num in range(8):
-    Add(Byte(0x40 + reg_num), 'inc', [(('fixreg', reg_num), 32)])
-    Add(Byte(0x48 + reg_num), 'dec', [(('fixreg', reg_num), 32)])
-    Add(Byte(0x50 + reg_num), 'push', [(('fixreg', reg_num), 32)])
-    Add(Byte(0x58 + reg_num), 'pop', [(('fixreg', reg_num), 32)])
+    AddLW(0x40 + reg_num, 'inc', [('fixreg', reg_num)])
+    AddLW(0x48 + reg_num, 'dec', [('fixreg', reg_num)])
+    AddLW(0x50 + reg_num, 'push', [('fixreg', reg_num)])
+    AddLW(0x58 + reg_num, 'pop', [('fixreg', reg_num)])
 
   AddLW(0x68, 'push', ['imm'])
   Add('6a', 'push', [('imm', 8)])
