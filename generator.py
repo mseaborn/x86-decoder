@@ -46,7 +46,7 @@ prev_time = time0
 def Log(msg):
   global prev_time
   now = time.time()
-  print '[+%.3fs] +%.3fs: %s' % (now - prev_time, now - time0, str(msg))
+  print '[+%.3fs] %.3fs: %s' % (now - prev_time, now - time0, str(msg))
   prev_time = now
 
 
