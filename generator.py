@@ -354,10 +354,20 @@ def SubstSize(dec, size):
   return map(Subst, dec)
 
 
-def GetCoreRoot(mem_access_only):
+# Instructions which can use the 'lock' prefix.
+lock_whitelist = set([
+    'adc', 'add', 'and', 'btc', 'btr', 'bts',
+    'cmpxchg', 'cmpxchg8b', 'dec', 'inc',
+    'neg', 'not', 'or', 'sbb', 'sub',
+    'xadd', 'xchg', 'xor'])
+
+
+def GetCoreRoot(mem_access_only=False, lockable_only=False):
   top_nodes = []
 
   def Add(bytes, instr_name, args, modrm_opcode=None):
+    if lockable_only and instr_name not in lock_whitelist:
+      return
     bytes = bytes.split()
     immediate_size = 0 # Size in bits
     rm_size = None
@@ -440,6 +450,8 @@ def GetCoreRoot(mem_access_only):
     top_nodes.append(TrieOfList(bytes, node))
 
   def AddFPMem(bytes, instr_name, modrm_opcode, size=32):
+    if lockable_only:
+      return
     labels = [('instr_name', instr_name),
               ('args', [(True, 'rm')])]
     nodes = []
@@ -451,7 +463,7 @@ def GetCoreRoot(mem_access_only):
     top_nodes.append(TrieOfList(bytes.split(), node))
 
   def AddFPReg(bytes, instr_name, modrm_opcode, format='st reg'):
-    if mem_access_only:
+    if mem_access_only or lockable_only:
       return
     labels = [('instr_name', instr_name)]
     if format == 'st reg':
@@ -835,12 +847,16 @@ def GetCoreRoot(mem_access_only):
 
 def GetRoot():
   Log('Core instructions...')
-  core = GetCoreRoot(mem_access_only=False)
+  core = GetCoreRoot()
   Log('Memory access instructions...')
   mem = TrieOfList(['65'], DftLabel('gs_prefix', None,
                                     GetCoreRoot(mem_access_only=True)))
+  Log('Locked instructions...')
+  lock = TrieOfList(['f0'], DftLabel('lock_prefix', None,
+                                     GetCoreRoot(mem_access_only=True,
+                                                 lockable_only=True)))
   Log('Merge...')
-  return MergeMany([core, mem], NoMerge)
+  return MergeMany([core, mem, lock], NoMerge)
 
 
 def ExpandArg((do_expand, arg), label_map):
@@ -865,7 +881,10 @@ def InstrFromLabels(label_map):
       raise AssertionError('Bad gs prefix usage?')
   instr_args = ', '.join([ExpandArg(arg, label_map)
                           for arg in label_map['args']])
-  return '%s %s' % (label_map['instr_name'], instr_args)
+  instr = '%s %s' % (label_map['instr_name'], instr_args)
+  if 'lock_prefix' in label_map:
+    instr = 'lock ' + instr
+  return instr
 
 def GetAll(node):
   for bytes, labels in FlattenTrie(node):
