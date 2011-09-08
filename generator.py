@@ -1,5 +1,6 @@
 
 import subprocess
+import time
 
 from memoize import Memoize
 import objdump_check
@@ -37,6 +38,16 @@ cond_codes = (
   'o', 'no', 'b', 'ae', 'e', 'ne', 'be', 'a',
   's', 'ns', 'p', 'np', 'l', 'ge', 'le', 'g',
   )
+
+
+time0 = time.time()
+prev_time = time0
+
+def Log(msg):
+  global prev_time
+  now = time.time()
+  print '[+%.3fs] +%.3fs: %s' % (now - prev_time, now - time0, str(msg))
+  prev_time = now
 
 
 def AssertEq(x, y):
@@ -815,8 +826,11 @@ def GetRoot():
   AddFPReg('df', 'fcomip', modrm_opcode=6)
   # skip 7
 
+  Log('Merge...')
   root = MergeMany(top_nodes, NoMerge)
+  Log('Add gs prefix...')
   with_gs = TrieOfList(['65'], UseGsSegment(root))
+  Log('Merge...')
   return MergeMany([root, with_gs], NoMerge)
 
 
@@ -838,27 +852,34 @@ def GetAll(node):
 
 
 def Main():
-  print 'Building trie...'
+  Log('Building trie...')
   trie_root = GetRoot()
-  print 'Size:'
-  print TrieSize(trie_root, False)
-  print 'Node count:'
-  print TrieNodeCount(trie_root)
-  print 'Testing...'
+  Log('Size:')
+  Log(TrieSize(trie_root, False))
+  Log('Node count:')
+  Log(TrieNodeCount(trie_root))
+  Log('Building test subset...')
   filtered_trie = FilterModRM(trie_root)
+  Log('Testing...')
+  fh = open('examples.list', 'w')
   for bytes, labels in GetAll(filtered_trie):
-    print '%s:%s' % (' '.join(bytes), labels)
+    fh.write('%s:%s\n' % (' '.join(bytes), labels))
+  fh.close()
   objdump_check.DisassembleTest(lambda: GetAll(filtered_trie), bits=32)
 
-  print 'Testing all ModRM bytes...'
+  Log('Testing all ModRM bytes...')
   objdump_check.DisassembleTest(
       lambda: GetAll(FilterPrefix(['01'], trie_root)),
       bits=32)
+  Log('Testing all ModRM bytes with gs...')
   objdump_check.DisassembleTest(
       lambda: GetAll(FilterPrefix(['65', '01'], trie_root)),
       bits=32)
 
-  trie.WriteToFile('x86_32.trie', RemoveLabels(trie_root))
+  dest_file = 'x86_32.trie'
+  Log('Dumping trie to %r...' % dest_file)
+  trie.WriteToFile(dest_file, RemoveLabels(trie_root))
+  Log('Done')
 
 
 if __name__ == '__main__':
