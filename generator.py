@@ -113,11 +113,13 @@ def FormatMemAccess(size, parts):
   return '%s[%s]' % (mem_sizes[size], '+'.join(parts))
 
 
+@Memoize
 def ModRMMem(rm_size, tail):
-  yield (0, 5, TrieOfList(['XX'] * 4,
-                          DftLabel('rm_arg',
-                                   '%sds:VALUE32' % mem_sizes[rm_size],
-                                   tail)))
+  got = []
+  got.append((0, 5, TrieOfList(['XX'] * 4,
+                               DftLabel('rm_arg',
+                                        '%sds:VALUE32' % mem_sizes[rm_size],
+                                        tail))))
   for mod, dispsize, disp_str in ((0, 0, ''),
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
@@ -128,20 +130,25 @@ def ModRMMem(rm_size, tail):
         continue
       if reg2 == 5 and mod == 0:
         continue
-      yield (mod, reg2,
-             TrieOfList(['XX'] * dispsize,
-                        DftLabel('rm_arg',
-                                 FormatMemAccess(rm_size, [regname2, disp_str]),
-                                 tail)))
+      got.append((mod, reg2,
+                  TrieOfList(['XX'] * dispsize,
+                             DftLabel('rm_arg',
+                                      FormatMemAccess(rm_size,
+                                                      [regname2, disp_str]),
+                                      tail))))
     reg2 = 4
-    yield (mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail))
+    got.append((mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail)))
+  return got
 
 
+@Memoize
 def ModRMReg(rm_size, tail):
+  got = []
   if rm_size not in ('lea_mem', 'mem32', '8byte'):
     mod = 3
     for reg2, regname2 in enumerate(regs_by_size[rm_size]):
-      yield (mod, reg2, DftLabel('rm_arg', regname2, tail))
+      got.append((mod, reg2, DftLabel('rm_arg', regname2, tail)))
+  return got
 
 
 def ModRM1(rm_size, mem_access_only, tail):
