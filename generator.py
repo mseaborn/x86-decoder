@@ -587,8 +587,12 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
   # 'pause' is really 'rep nop'.
   Add('f3 90', 'pause', [])
   for reg_num in range(8):
+    # '66 90' (a two-byte NOP) is known as 'xchg %ax, %ax' rather than
+    # 'data16 nop', so we do not use AddLW() here.
+    format = [('fixreg', reg_num), '*ax']
     if reg_num != 0:
-      AddLW(0x90 + reg_num, 'xchg', [('fixreg', reg_num), '*ax'])
+      Add(Byte(0x90 + reg_num), 'xchg', SubstSize(format, 32))
+    Add('66 ' + Byte(0x90 + reg_num), 'xchg', SubstSize(format, 16))
 
   # "Convert word to long".  Sign-extends %ax into %eax.
   Add('98', 'cwde', [])
