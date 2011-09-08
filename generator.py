@@ -612,8 +612,13 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
   Add('9b', 'fwait', [])
   Add('9e', 'sahf', [])
   Add('9f', 'lahf', [])
-  Add('c9', 'leave', [])
   Add('f4', 'hlt', [])
+
+  Add('c9', 'leave', [])
+  # 'data16 leave' is probably never useful, but we allow it for
+  # consistency with the original NaCl x86-32 validator.
+  # See http://code.google.com/p/nativeclient/issues/detail?id=2244
+  Add('66 c9', 'data16 leave', [])
 
   Add('e8', 'call', [('jump_dest', 32)])
 
