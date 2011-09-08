@@ -147,9 +147,16 @@ def ModRM(reg_size, rm_size, tail):
                        DftLabel('reg_arg', regname, node))
 
 
+# Although the node this function returns won't get reused, the child
+# nodes do get reused, which makes this worth memoizing.
+@Memoize
 def ModRMSingleArg(rm_size, opcode, tail):
+  nodes = []
   for mod, reg2, node in ModRM1(rm_size, tail):
-    yield TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)], node)
+    test_keep = (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
+    nodes.append(TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)],
+                            DftLabel('test_keep', test_keep, node)))
+  return MergeMany(nodes, NoMerge)
 
 
 def TrieNode(children, accept=False):
@@ -229,6 +236,20 @@ def TrieSize(start_node, expand_wildcards):
   return Rec(start_node)
 
 
+def TrieNodeCount(root):
+  seen = set()
+  def Rec(node):
+    if node not in seen:
+      seen.add(node)
+      if isinstance(node, DftLabel):
+        Rec(node.next)
+      else:
+        for child in node.children.itervalues():
+          Rec(child)
+  Rec(root)
+  return len(seen)
+
+
 def NoMerge(x):
   raise Exception('Cannot merge %r' % x)
 
@@ -249,13 +270,8 @@ def ModRMNode(reg_size, rm_size, immediate_size):
 
 
 def ModRMSingleArgNode(rm_size, opcode, labels, immediate_size):
-  nodes = list(ModRMSingleArg(rm_size, opcode, ImmediateNode(immediate_size)))
-  node = MergeMany(nodes, NoMerge)
-  def Filter(byte):
-    mod, reg1, reg2 = CatBitsRev(byte, [2, 3, 3])
-    return (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
-  return TrieNode(dict((key, DftLabel('test_keep', Filter(int(key, 16)),
-                                      DftLabels(labels, value)))
+  node = ModRMSingleArg(rm_size, opcode, ImmediateNode(immediate_size))
+  return TrieNode(dict((key, DftLabels(labels, value))
                        for key, value in node.children.iteritems()))
 
 
@@ -826,6 +842,8 @@ def Main():
   trie_root = GetRoot()
   print 'Size:'
   print TrieSize(trie_root, False)
+  print 'Node count:'
+  print TrieNodeCount(trie_root)
   print 'Testing...'
   filtered_trie = FilterModRM(trie_root)
   for bytes, labels in GetAll(filtered_trie):
