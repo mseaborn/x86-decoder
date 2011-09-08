@@ -567,8 +567,11 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
     AddLW(0x50 + reg_num, 'push', [('fixreg', reg_num)])
     AddLW(0x58 + reg_num, 'pop', [('fixreg', reg_num)])
 
+  # These both move %esp by 4 bytes.
   AddLW(0x68, 'push', ['imm'])
   Add('6a', 'push', [('imm', 8)])
+  # This moves %esp by 2 bytes.
+  Add('66 6a', 'data16 push', [('imm', 8)])
 
   AddLW(0x69, 'imul', ['reg', 'rm', 'imm'])
   AddLW(0x6b, 'imul', ['reg', 'rm', 'imm8'])

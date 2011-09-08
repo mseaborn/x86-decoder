@@ -69,9 +69,20 @@ def ReadObjdump(obj_file):
     match = regexp.match(line)
     if match is not None:
       addr = int(match.group(1), 16)
-      disasm = line[match.end():]
+      disasm = line[match.end():].rstrip()
       yield addr, disasm
   assert proc.wait() == 0, proc.wait()
+
+
+# objdump outputs 'data16' on a separate line for 'data16 push VALUE8'
+# (66 6a XX) even though it is a single instruction.  We need to undo
+# this.
+def MungeData16(instrs):
+  for addr, disasm in instrs:
+    if disasm == 'data16':
+      addr2, disasm2 = instrs.next()
+      disasm = '%s %s' % (disasm, disasm2)
+    yield addr, disasm
 
 
 def ReadListFile(fh):
@@ -81,7 +92,7 @@ def ReadListFile(fh):
 
 
 def CrossCheck(obj_file, list_file):
-  objdump_iter = ReadObjdump('tmp.o')
+  objdump_iter = MungeData16(ReadObjdump('tmp.o'))
   expected_addr = 0
   prev_length = 0
   failed = False
