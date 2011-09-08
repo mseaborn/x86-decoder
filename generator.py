@@ -104,7 +104,7 @@ def Sib(mod, rm_size, disp_size, disp_str, tail):
         nodes.append(TrieOfList(bytes,
                                 DftLabel('rm_arg',
                                          FormatMemAccess(rm_size, parts),
-                                         DftLabel('mem_access', None, tail))))
+                                         tail)))
   return MergeMany(nodes, NoMerge)
 
 
@@ -117,7 +117,7 @@ def ModRMMem(rm_size, tail):
   yield (0, 5, TrieOfList(['XX'] * 4,
                           DftLabel('rm_arg',
                                    '%sds:VALUE32' % mem_sizes[rm_size],
-                                   DftLabel('mem_access', None, tail))))
+                                   tail)))
   for mod, dispsize, disp_str in ((0, 0, ''),
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
@@ -132,7 +132,7 @@ def ModRMMem(rm_size, tail):
              TrieOfList(['XX'] * dispsize,
                         DftLabel('rm_arg',
                                  FormatMemAccess(rm_size, [regname2, disp_str]),
-                                 DftLabel('mem_access', None, tail))))
+                                 tail)))
     reg2 = 4
     yield (mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail))
 
@@ -144,16 +144,17 @@ def ModRMReg(rm_size, tail):
       yield (mod, reg2, DftLabel('rm_arg', regname2, tail))
 
 
-def ModRM1(rm_size, tail):
+def ModRM1(rm_size, mem_access_only, tail):
   for result in ModRMMem(rm_size, tail):
     yield result
-  for result in ModRMReg(rm_size, tail):
-    yield result
+  if not mem_access_only:
+    for result in ModRMReg(rm_size, tail):
+      yield result
 
 
-def ModRM(reg_size, rm_size, tail):
+def ModRM(reg_size, rm_size, mem_access_only, tail):
   for reg, regname in enumerate(regs_by_size[reg_size]):
-    for mod, reg2, node in ModRM1(rm_size, tail):
+    for mod, reg2, node in ModRM1(rm_size, mem_access_only, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
                        DftLabel('reg_arg', regname, node))
 
@@ -161,9 +162,9 @@ def ModRM(reg_size, rm_size, tail):
 # Although the node this function returns won't get reused, the child
 # nodes do get reused, which makes this worth memoizing.
 @Memoize
-def ModRMSingleArg(rm_size, opcode, tail):
+def ModRMSingleArg(rm_size, mem_access_only, opcode, tail):
   nodes = []
-  for mod, reg2, node in ModRM1(rm_size, tail):
+  for mod, reg2, node in ModRM1(rm_size, mem_access_only, tail):
     test_keep = (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
     nodes.append(TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)],
                             DftLabel('test_keep', test_keep, node)))
@@ -272,16 +273,19 @@ def ImmediateNode(immediate_size):
 
 
 @Memoize
-def ModRMNode(reg_size, rm_size, immediate_size):
-  nodes = list(ModRM(reg_size, rm_size, ImmediateNode(immediate_size)))
+def ModRMNode(reg_size, rm_size, mem_access_only, immediate_size):
+  nodes = list(ModRM(reg_size, rm_size, mem_access_only,
+                     ImmediateNode(immediate_size)))
   node = MergeMany(nodes, NoMerge)
   return TrieNode(dict((key, DftLabel('test_keep', key == '00' or key == 'ff',
                                       value))
                        for key, value in node.children.iteritems()))
 
 
-def ModRMSingleArgNode(rm_size, opcode, labels, immediate_size):
-  node = ModRMSingleArg(rm_size, opcode, ImmediateNode(immediate_size))
+def ModRMSingleArgNode(rm_size, mem_access_only, opcode, labels,
+                       immediate_size):
+  node = ModRMSingleArg(rm_size, mem_access_only, opcode,
+                        ImmediateNode(immediate_size))
   return TrieNode(dict((key, DftLabels(labels, value))
                        for key, value in node.children.iteritems()))
 
@@ -309,26 +313,6 @@ def RemoveLabels(node):
 
 
 @Memoize
-def UseGsSegment(node, keep=False):
-  if isinstance(node, DftLabel) and node.key == 'mem_access':
-    keep = True
-  if isinstance(node, DftLabel) and node.key in ('rm_arg', 'mem_arg'):
-    # Modifying the string to add 'gs:' is rather hacky, but it is
-    # probably not worth doing it more cleanly, because NaCl has been
-    # changed so that the %gs segment is only 4 bytes, and the
-    # validator will probably be changed to disallow all but the
-    # simplest %gs usage.
-    text = node.value.replace('[', 'gs:[').replace('ds:', 'gs:')
-    return DftLabel(node.key, text, UseGsSegment(node.next, keep))
-  elif isinstance(node, DftLabel):
-    return DftLabel(node.key, node.value, UseGsSegment(node.next, keep))
-  else:
-    return TrieNode(dict((key, UseGsSegment(value, keep))
-                         for key, value in node.children.iteritems()),
-                    node.accept and keep)
-
-
-@Memoize
 def FilterModRM(node):
   if isinstance(node, DftLabel):
     if node.key == 'test_keep' and not node.value:
@@ -346,6 +330,8 @@ def FilterModRM(node):
 def FilterPrefix(bytes, node):
   if len(bytes) == 0:
     return node
+  elif isinstance(node, DftLabel):
+    return DftLabel(node.key, node.value, FilterPrefix(bytes, node.next))
   else:
     return TrieNode({bytes[0]: FilterPrefix(bytes[1:],
                                             node.children[bytes[0]])},
@@ -361,7 +347,7 @@ def SubstSize(dec, size):
   return map(Subst, dec)
 
 
-def GetRoot():
+def GetCoreRoot(mem_access_only):
   top_nodes = []
 
   def Add(bytes, instr_name, args, modrm_opcode=None):
@@ -371,6 +357,7 @@ def GetRoot():
     reg_size = None
     out_args = []
     labels = []
+    mem_access = False
 
     def SimpleArg(arg):
       out_args.append((False, arg))
@@ -384,6 +371,7 @@ def GetRoot():
         assert rm_size is None
         rm_size = size
         out_args.append((True, kind))
+        mem_access = True
       elif kind == 'lea_mem':
         assert rm_size is None
         # For 'lea', the size is really irrelevant.
@@ -393,6 +381,7 @@ def GetRoot():
         assert rm_size is None
         rm_size = 'mem%i' % size
         out_args.append((True, 'rm'))
+        mem_access = True
       elif kind == 'reg':
         assert reg_size is None
         reg_size = size
@@ -403,7 +392,7 @@ def GetRoot():
         # We use mem_arg to allow 'ds:' to be replaced with 'gs:' later.
         out_args.append((True, 'mem'))
         labels.append(('mem_arg', 'ds:VALUE32'))
-        labels.append(('mem_access', None))
+        mem_access = True
       elif kind == 'jump_dest':
         assert immediate_size == 0
         immediate_size = size
@@ -416,18 +405,23 @@ def GetRoot():
         SimpleArg(regs_by_size[size][kind[1]])
       elif kind in ('es:[edi]', 'ds:[esi]'):
         SimpleArg(mem_sizes[size] + kind)
+        # Although this accesses memory, we don't set 'mem_access = True'
+        # because this cannot be used with lock/gs prefixes.
       else:
         raise AssertionError('Unknown arg type: %s' % repr(kind))
+
+    if mem_access_only and not mem_access:
+      return
 
     labels.append(('args', out_args))
     labels.append(('instr_name', instr_name))
 
     if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
-      node = ModRMNode(reg_size, rm_size, immediate_size)
+      node = ModRMNode(reg_size, rm_size, mem_access_only, immediate_size)
     elif rm_size is not None and reg_size is None:
       assert modrm_opcode is not None
-      node = ModRMSingleArgNode(rm_size, modrm_opcode, labels,
+      node = ModRMSingleArgNode(rm_size, mem_access_only, modrm_opcode, labels,
                                 immediate_size)
       labels = []
     elif rm_size is None and reg_size is None:
@@ -450,6 +444,8 @@ def GetRoot():
     top_nodes.append(TrieOfList(bytes.split(), node))
 
   def AddFPReg(bytes, instr_name, modrm_opcode, format='st reg'):
+    if mem_access_only:
+      return
     labels = [('instr_name', instr_name)]
     if format == 'st reg':
       labels.append(('args', [(False, 'st'), (True, 'rm')]))
@@ -827,11 +823,17 @@ def GetRoot():
   # skip 7
 
   Log('Merge...')
-  root = MergeMany(top_nodes, NoMerge)
-  Log('Add gs prefix...')
-  with_gs = TrieOfList(['65'], UseGsSegment(root))
+  return MergeMany(top_nodes, NoMerge)
+
+
+def GetRoot():
+  Log('Core instructions...')
+  core = GetCoreRoot(mem_access_only=False)
+  Log('Memory access instructions...')
+  mem = TrieOfList(['65'], DftLabel('gs_prefix', None,
+                                    GetCoreRoot(mem_access_only=True)))
   Log('Merge...')
-  return MergeMany([root, with_gs], NoMerge)
+  return MergeMany([core, mem], NoMerge)
 
 
 def ExpandArg((do_expand, arg), label_map):
@@ -841,6 +843,19 @@ def ExpandArg((do_expand, arg), label_map):
     return arg
 
 def InstrFromLabels(label_map):
+  if 'gs_prefix' in label_map:
+    # Modifying the string to add 'gs:' is rather hacky, but it is
+    # probably not worth doing it more cleanly, because NaCl has been
+    # changed so that the %gs segment is only 4 bytes, and the
+    # validator will probably be changed to disallow all but the
+    # simplest %gs usage.
+    if 'rm_arg' in label_map:
+      label_map['rm_arg'] = \
+          label_map['rm_arg'].replace('ds:', 'gs:').replace('[', 'gs:[')
+    elif 'mem_arg' in label_map:
+      label_map['mem_arg'] = label_map['mem_arg'].replace('ds:', 'gs:')
+    else:
+      raise AssertionError('Bad gs prefix usage?')
   instr_args = ', '.join([ExpandArg(arg, label_map)
                           for arg in label_map['args']])
   return '%s %s' % (label_map['instr_name'], instr_args)
