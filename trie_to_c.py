@@ -44,7 +44,7 @@ static inline uint8_t trie_lookup(uint8_t state, uint8_t byte) {
 
 
 def Main():
-  trie_file = 'new.trie'
+  trie_file = 'x86_32.trie'
 
   root_node = trie.TrieFromFile(trie_file)
   nodes = sorted(trie.GetAllNodes(root_node), key=SortKey)

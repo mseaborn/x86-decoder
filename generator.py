@@ -309,14 +309,41 @@ def FlattenTrie(node, bytes=[], labels=[]):
         yield result
 
 
+# Convert from a transducer (with labels) to an acceptor (no labels).
+# Strip all labels, converting relative_jump labels into accept states.
 @Memoize
-def RemoveLabels(node):
+def ConvertToDfa(node, accept_type='normal_inst'):
   if isinstance(node, DftLabel):
-    return RemoveLabels(node.next)
+    if node.key == 'relative_jump':
+      assert accept_type == 'normal_inst'
+      accept_type = 'jump_rel%i' % node.value
+    return ConvertToDfa(node.next, accept_type)
   else:
-    return trie.MakeInterned(dict((key, RemoveLabels(value))
+    assert node.accept in (True, False)
+    if node.accept:
+      accept = accept_type
+    else:
+      accept = False
+    return trie.MakeInterned(dict((key, ConvertToDfa(value, accept_type))
                                   for key, value in node.children.iteritems()),
-                             node.accept)
+                             accept)
+
+
+# Expand wildcard bytes.  This has two benefits:
+#  * It allows wildcard edges to be merged with non-wildcards, in
+#    order to support the 'superinst_start' case.
+#  * It allows some nodes to be combined into one (combining explicit
+#    and implicit wildcards).
+@Memoize
+def ExpandWildcards(node):
+  if 'XX' in node.children:
+    assert len(node.children) == 1, node.children.keys()
+    dest = ExpandWildcards(node.children['XX'])
+    children = dict((Byte(byte), dest) for byte in xrange(256))
+  else:
+    children = dict((key, ExpandWildcards(value))
+                    for key, value in node.children.iteritems())
+  return trie.MakeInterned(children, node.accept)
 
 
 @Memoize
@@ -414,6 +441,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
         assert immediate_size == 0
         immediate_size = size
         SimpleArg('JUMP_DEST')
+        labels.append(('relative_jump', size / 8))
       elif kind == '*ax':
         SimpleArg(regs_by_size[size][0])
       elif kind in ('1', 'cl'):
@@ -624,9 +652,10 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
   AddPair(0xfe, 'dec', ['rm'], modrm_opcode=1)
   # Group 5
   AddLW(0xff, 'push', ['rm'], modrm_opcode=6)
-  # TODO: We don't want to allow the data16 prefix on jmp/call.
-  AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
-  AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
+  # NaCl disallows using these without a mask instruction first.
+  # Note that allowing jmp/call with a data16 prefix isn't very useful.
+  # AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
+  # AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
 
   AddPair(0x88, 'mov', ['rm', 'reg'])
   AddPair(0x8a, 'mov', ['reg', 'rm'])
@@ -892,6 +921,24 @@ def GetAll(node):
     yield (bytes, InstrFromLabels(label_map))
 
 
+def SandboxedJumps():
+  tail = trie.MakeInterned({}, 'normal_inst')
+  for reg in range(8):
+    yield TrieOfList(map(Byte, [0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
+                                0xff, 0xe0 | reg]),      # jmp *%reg
+                     tail)
+    yield TrieOfList(map(Byte, [0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
+                                0xff, 0xd0 | reg]),      # call *%reg
+                     tail)
+
+
+def MergeAcceptTypes(accept_types):
+  if accept_types == set(['normal_inst', False]):
+    return 'superinst_start'
+  else:
+    raise AssertionError('Cannot merge %r' % accept_types)
+
+
 def Main():
   Log('Building trie...')
   trie_root = GetRoot()
@@ -917,9 +964,25 @@ def Main():
       lambda: GetAll(FilterPrefix(['65', '01'], trie_root)),
       bits=32)
 
+  Log('Converting to DFA...')
+  dfa_root = ConvertToDfa(trie_root)
+  Log('DFA node count:')
+  Log(TrieNodeCount(dfa_root))
+  Log('Expand wildcards...')
+  # This is much faster as a separate pass that is applied after
+  # ConvertToDfa(), because there are fewer nodes to apply the
+  # expanding-out to.
+  dfa_root = ExpandWildcards(dfa_root)
+  Log('DFA node count:')
+  Log(TrieNodeCount(dfa_root))
+
+  Log('Adding jumps...')
+  dfa_root = MergeMany([dfa_root] + list(SandboxedJumps()), MergeAcceptTypes)
+  Log('DFA node count:')
+  Log(TrieNodeCount(dfa_root))
   dest_file = 'x86_32.trie'
   Log('Dumping trie to %r...' % dest_file)
-  trie.WriteToFile(dest_file, RemoveLabels(trie_root))
+  trie.WriteToFile(dest_file, dfa_root)
   Log('Done')
 
 
