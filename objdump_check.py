@@ -84,6 +84,7 @@ def CrossCheck(obj_file, list_file):
   objdump_iter = ReadObjdump('tmp.o')
   expected_addr = 0
   prev_length = 0
+  failed = False
   for index, (bytes, desc) in enumerate(ReadListFile(open('tmp.list'))):
     got_addr, disasm_orig = objdump_iter.next()
     if got_addr != expected_addr:
@@ -92,6 +93,7 @@ def CrossCheck(obj_file, list_file):
       print 'Length mismatch on previous instruction: got %i, expected %i' % (
           prev_length + got_addr - expected_addr,
           prev_length)
+      failed = True
       break
     expected_addr += len(bytes)
     prev_length = len(bytes)
@@ -107,6 +109,9 @@ def CrossCheck(obj_file, list_file):
     if desc != disasm:
       print 'Mismatch (%i): %r != %r (%r) (%s)' % (
         index, desc, disasm, disasm_orig, ' '.join(bytes))
+      failed = True
+  if failed:
+    raise Exception('Cross check failed')
 
 
 def DisassembleTest(get_instructions, bits):
