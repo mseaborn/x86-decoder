@@ -34,17 +34,12 @@ def DisassembleTestCallback(get_instructions, bits):
 
 
 whitespace_regexp = re.compile('\s+')
-comment_regexp = re.compile('\s+#.*$')
 jump_regexp = re.compile('^(jn?[a-z]{1,2}|call|jmp[lw]?|je?cxz) 0x[0-9a-f]+$')
 
 
 def NormaliseObjdumpDisasm(disasm):
   # Canonicalise whitespace.
   disasm = whitespace_regexp.sub(' ', disasm)
-  # Remove comments.
-  disasm = comment_regexp.sub('', disasm)
-  # objdump puts in trailing whitespace sometimes.
-  disasm = disasm.rstrip(' ')
   # Canonicalise jump targets.
   disasm = jump_regexp.sub('\\1 JUMP_DEST', disasm)
   disasm = (disasm
@@ -53,10 +48,6 @@ def NormaliseObjdumpDisasm(disasm):
             .replace('0x1111', 'VALUE16')
             .replace('0x11', 'VALUE8')
             .replace(',', ', '))
-  # gas accepts a ".s" suffix to indicate a non-canonical
-  # reversed-operands encoding.  With "-M suffix", objdump prints
-  # this.
-  disasm = disasm.replace('.s ', ' ')
   return disasm
 
 
@@ -113,10 +104,6 @@ def CrossCheck(obj_file, list_file):
     # Remove trailing space from our zero-arg instructions, e.g. 'nop'.
     # TODO: Don't put the trailing space in.
     desc = desc.rstrip(' ')
-    if desc.startswith('TODO'):
-      # Some instructions' disassembly is not done properly yet.  We
-      # are only checking their encoding length.
-      continue
     if desc != disasm:
       print 'Mismatch (%i): %r != %r (%r) (%s)' % (
         index, desc, disasm, disasm_orig, ' '.join(bytes))
