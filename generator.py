@@ -949,9 +949,9 @@ def InstrFromLabels(label_map):
       label_map['mem_arg'] = label_map['mem_arg'].replace('ds:', 'gs:')
     else:
       raise AssertionError('Bad gs prefix usage?')
-  instr_args = ', '.join([ExpandArg(arg, label_map)
-                          for arg in label_map['args']])
-  instr = '%s %s' % (label_map['instr_name'], instr_args)
+  instr_args = ','.join([' ' + ExpandArg(arg, label_map)
+                         for arg in label_map['args']])
+  instr = label_map['instr_name'] + instr_args
   if 'lock_prefix' in label_map:
     instr = 'lock ' + instr
   return instr
