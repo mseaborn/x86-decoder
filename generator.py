@@ -419,11 +419,6 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
       if data16 and instr_name in ('xadd', 'cmpxchg', 'shld', 'shrd',
                                    'bsf', 'bsr', 'jmp'):
         return
-      # TODO: This constraint matches a constraint in my earlier
-      # generator (constraint_gen.py), but actually I think the
-      # original validator allows 16-bit atomic operations.
-      if data16 and lockable_only:
-        return
 
     immediate_size = 0 # Size in bits
     rm_size = None
