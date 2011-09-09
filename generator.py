@@ -303,7 +303,8 @@ def FlattenTrie(node, bytes=[], labels=[]):
       yield result
   else:
     if node.accept:
-      yield (bytes, labels)
+      label_map = dict((label.key, label.value) for label in labels)
+      yield (bytes, label_map)
     for byte, next in sorted(node.children.iteritems()):
       for result in FlattenTrie(next, bytes + [byte], labels):
         yield result
@@ -961,8 +962,7 @@ def InstrFromLabels(label_map):
   return instr
 
 def GetAll(node):
-  for bytes, labels in FlattenTrie(node):
-    label_map = dict((label.key, label.value) for label in labels)
+  for bytes, label_map in FlattenTrie(node):
     yield (bytes, InstrFromLabels(label_map))
 
 

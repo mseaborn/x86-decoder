@@ -2,9 +2,7 @@
 import os
 import subprocess
 
-from logic import Conj
-import constraint_gen
-import logic
+import generator
 
 
 bundle_size = 32
@@ -15,11 +13,15 @@ bits = 32
 def Main():
   asm_fh = open('tmp.S', 'w')
 
-  def OnResult(info):
+  root = generator.GetRoot()
+  root = generator.FilterModRM(root)
+
+  count = 0
+  for bytes, label_map in generator.FlattenTrie(root):
     # For relative jumps, fill in wildcards with 0 so that the jumps
     # point to somewhere valid.  Otherwise, use a non-zero value to
     # make things more interesting.
-    if info['jump_type'] == 'relative_jump':
+    if 'relative_jump' in label_map:
       wildcard_byte = '00'
     else:
       wildcard_byte = '11'
@@ -28,13 +30,13 @@ def Main():
         return wildcard_byte
       else:
         return byte
-    bytes = map(MapWildcard, info['bytes'])
+    bytes = map(MapWildcard, bytes)
     # Put each instruction in a separate bundle for two reasons:
     #  * It is the easiest way to prevent instructions from straddling
     #    bundle boundaries.
     #  * It helps ncval to continue if it hits an unknown instruction.
     padding = ['90'] * (bundle_size - len(bytes))
-    if info['inst'] == 'calll':
+    if label_map['instr_name'] == 'call':
       # The original ncval requires that 'call' instructions are
       # aligned such that they end at an instruction bundle boundary.
       # This is not required for safety, but we humour the validator.
@@ -44,13 +46,12 @@ def Main():
       bytes = bytes + padding
     escaped_bytes = ''.join('\\x' + byte for byte in bytes)
     asm_fh.write('.ascii "%s"\n' % escaped_bytes)
+    count += 1
 
-  term = Conj(constraint_gen.OneOfEachType,
-              constraint_gen.NaClConstraints)
-  logic.GenerateAll(term, OnResult)
   asm_fh.close()
+  print 'Testing %i instructions' % count
   subprocess.check_call(['gcc', '-c', '-m%i' % bits, 'tmp.S', '-o', 'tmp.o'])
-  subprocess.check_call(['nacl-gcc', '-nostartfiles',
+  subprocess.check_call(['i686-nacl-gcc', '-nostartfiles', '-nostdlib',
                          '-Wl,--entry=0', # Suppress warning about _start
                          '-m%i' % bits, 'tmp.o', '-o', 'tmp.exe'])
   # We assume that ncval and ncval_annotate.py are on PATH.
@@ -58,6 +59,7 @@ def Main():
   # Run ncval on its own just in case.
   subprocess.check_call(['ncval_annotate.py', 'tmp.exe'])
   subprocess.check_call(['ncval', 'tmp.exe'], stdout=open(os.devnull, 'w'))
+  print 'Passed'
 
 
 if __name__ == '__main__':
