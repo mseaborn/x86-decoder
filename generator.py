@@ -969,6 +969,9 @@ def GetAll(node):
 def SandboxedJumps():
   tail = trie.MakeInterned({}, 'normal_inst')
   for reg in range(8):
+    if reg == 4:
+      # The original validator arbitrarily disallows %esp here.
+      continue
     yield TrieOfList(map(Byte, [0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
                                 0xff, 0xe0 | reg]),      # jmp *%reg
                      tail)

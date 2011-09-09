@@ -10,14 +10,27 @@ bundle_size = 32
 bits = 32
 
 
+def GetInstructions():
+  root = generator.GetRoot()
+  root = generator.FilterModRM(root)
+  for bytes, label_map in generator.FlattenTrie(root):
+    label_map['align_to_end'] = (label_map['instr_name'] == 'call')
+    yield bytes, label_map
+
+  # TODO: It would be better if we tested the final DFA, rather than
+  # enumerating the superinstructions here separately.
+  indirect_jumps = generator.MergeMany(list(generator.SandboxedJumps()),
+                                       generator.NoMerge)
+  for bytes, label_map in generator.FlattenTrie(indirect_jumps):
+    label_map['align_to_end'] = True # Aligns the jmps unnecessarily
+    yield bytes, label_map
+
+
 def Main():
   asm_fh = open('tmp.S', 'w')
 
-  root = generator.GetRoot()
-  root = generator.FilterModRM(root)
-
   count = 0
-  for bytes, label_map in generator.FlattenTrie(root):
+  for bytes, label_map in GetInstructions():
     # For relative jumps, fill in wildcards with 0 so that the jumps
     # point to somewhere valid.  Otherwise, use a non-zero value to
     # make things more interesting.
@@ -36,7 +49,7 @@ def Main():
     #    bundle boundaries.
     #  * It helps ncval to continue if it hits an unknown instruction.
     padding = ['90'] * (bundle_size - len(bytes))
-    if label_map['instr_name'] == 'call':
+    if label_map['align_to_end']:
       # The original ncval requires that 'call' instructions are
       # aligned such that they end at an instruction bundle boundary.
       # This is not required for safety, but we humour the validator.
