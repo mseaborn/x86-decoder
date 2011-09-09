@@ -389,13 +389,41 @@ lock_whitelist = set([
     'xadd', 'xchg', 'xor'])
 
 
-def GetCoreRoot(mem_access_only=False, lockable_only=False):
+# TODO: Make this into a function argument.
+nacl_mode = True
+
+
+def GetCoreRoot(mem_access_only=False, lockable_only=False,
+                gs_access_only=False):
   top_nodes = []
 
-  def Add(bytes, instr_name, args, modrm_opcode=None):
+  def Add(bytes, instr_name, args, modrm_opcode=None, data16=False):
     if lockable_only and instr_name not in lock_whitelist:
       return
     bytes = bytes.split()
+    if nacl_mode:
+      # The following restrictions are enforced by the original x86-32
+      # NaCl validator, but might not be needed for safety.
+      # %gs is allowed only with a limited set of instructions.
+      if gs_access_only and (instr_name not in ('mov', 'cmp') or data16):
+        return
+      # Combining the data16 prefix with rep/repnz is not allowed.
+      if data16 and bytes[0] in ('f2', 'f3'):
+        return
+      # repnz is not allowed with movs/stos, though that may just be a
+      # mistake in the original validator.
+      if instr_name in ('repnz movs', 'repnz stos'):
+        return
+      # These instructions are not allowed in their 16-bit forms.
+      if data16 and instr_name in ('xadd', 'cmpxchg', 'shld', 'shrd',
+                                   'bsf', 'bsr', 'jmp'):
+        return
+      # TODO: This constraint matches a constraint in my earlier
+      # generator (constraint_gen.py), but actually I think the
+      # original validator allows 16-bit atomic operations.
+      if data16 and lockable_only:
+        return
+
     immediate_size = 0 # Size in bits
     rm_size = None
     reg_size = None
@@ -474,11 +502,13 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
       node = ImmediateNode(immediate_size)
     else:
       raise AssertionError('Unknown type')
-    node = DftLabels(labels, node)
-    top_nodes.append(TrieOfList(bytes, node))
+    node = TrieOfList(bytes, DftLabels(labels, node))
+    if data16:
+      node = TrieOfList(['66'], node)
+    top_nodes.append(node)
 
   def AddFPMem(bytes, instr_name, modrm_opcode, size=32):
-    if lockable_only:
+    if lockable_only or (nacl_mode and gs_access_only):
       return
     labels = [('instr_name', instr_name),
               ('args', [(True, 'rm')])]
@@ -515,13 +545,13 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
     AddFPReg(bytes, instr_name, modrm_opcode, format)
 
   def AddLW(opcode, instr, format, **kwargs):
-    Add('66 ' + Byte(opcode), instr, SubstSize(format, 16), **kwargs)
+    Add(Byte(opcode), instr, SubstSize(format, 16), data16=True, **kwargs)
     Add(Byte(opcode), instr, SubstSize(format, 32), **kwargs)
 
   # Like AddLW(), but takes a string rather than an int.
   # TODO: Unify these.
   def AddLW2(opcode, instr, format, **kwargs):
-    Add('66 ' + opcode, instr, SubstSize(format, 16), **kwargs)
+    Add(opcode, instr, SubstSize(format, 16), data16=True, **kwargs)
     Add(opcode, instr, SubstSize(format, 32), **kwargs)
 
   def AddPair(opcode, instr, format, **kwargs):
@@ -628,7 +658,8 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
                                ('f3', 'rep ')]:
     AddPair2(prefix_bytes, 0xa4, prefix + 'movs', ['es:[edi]', 'ds:[esi]'])
     AddPair2(prefix_bytes, 0xaa, prefix + 'stos', ['es:[edi]', '*ax'])
-    AddPair2(prefix_bytes, 0xac, prefix + 'lods', ['*ax', 'ds:[esi]'])
+    if not nacl_mode:
+      AddPair2(prefix_bytes, 0xac, prefix + 'lods', ['*ax', 'ds:[esi]'])
   for prefix_bytes, prefix in [('', ''),
                                ('f2', 'repnz '),
                                ('f3', 'repz ')]:
@@ -637,7 +668,8 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
 
   AddPair(0xa8, 'test', ['*ax', 'imm'])
 
-  Add('e3', 'jecxz', [('jump_dest', 8)])
+  if not nacl_mode:
+    Add('e3', 'jecxz', [('jump_dest', 8)])
   AddLW(0xe9, 'jmp', ['jump_dest'])
   Add('eb', 'jmp', [('jump_dest', 8)])
 
@@ -664,8 +696,9 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
   AddLW(0xff, 'push', ['rm'], modrm_opcode=6)
   # NaCl disallows using these without a mask instruction first.
   # Note that allowing jmp/call with a data16 prefix isn't very useful.
-  # AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
-  # AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
+  if not nacl_mode:
+    AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
+    AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
 
   AddPair(0x88, 'mov', ['rm', 'reg'])
   AddPair(0x8a, 'mov', ['reg', 'rm'])
@@ -687,16 +720,17 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
     Add('0f ' + Byte(0x90 + cond_num), 'set' + cond_name, [('rm', 8)],
         modrm_opcode=0)
 
-  # Bit test/set/clear operations
-  AddLW2('0f a3', 'bt', ['rm', 'reg'])
-  AddLW2('0f ab', 'bts', ['rm', 'reg'])
-  AddLW2('0f b3', 'btr', ['rm', 'reg'])
-  AddLW2('0f bb', 'btc', ['rm', 'reg'])
-  # Group 8
-  AddLW2('0f ba', 'bt', ['rm', 'imm8'], modrm_opcode=4)
-  AddLW2('0f ba', 'bts', ['rm', 'imm8'], modrm_opcode=5)
-  AddLW2('0f ba', 'btr', ['rm', 'imm8'], modrm_opcode=6)
-  AddLW2('0f ba', 'btc', ['rm', 'imm8'], modrm_opcode=7)
+  if not nacl_mode:
+    # Bit test/set/clear operations
+    AddLW2('0f a3', 'bt', ['rm', 'reg'])
+    AddLW2('0f ab', 'bts', ['rm', 'reg'])
+    AddLW2('0f b3', 'btr', ['rm', 'reg'])
+    AddLW2('0f bb', 'btc', ['rm', 'reg'])
+    # Group 8
+    AddLW2('0f ba', 'bt', ['rm', 'imm8'], modrm_opcode=4)
+    AddLW2('0f ba', 'bts', ['rm', 'imm8'], modrm_opcode=5)
+    AddLW2('0f ba', 'btr', ['rm', 'imm8'], modrm_opcode=6)
+    AddLW2('0f ba', 'btc', ['rm', 'imm8'], modrm_opcode=7)
 
   # Bit shift left/right
   AddLW2('0f a4', 'shld', ['rm', 'reg', 'imm8'])
@@ -712,10 +746,10 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False):
 
   # Move with zero/sign extend.
   Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
-  Add('66 0f b6', 'movzx', [('reg', 16), ('rm', 8)])
+  Add('0f b6', 'movzx', [('reg', 16), ('rm', 8)], data16=True)
   Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
   Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
-  Add('66 0f be', 'movsx', [('reg', 16), ('rm', 8)])
+  Add('0f be', 'movsx', [('reg', 16), ('rm', 8)], data16=True)
   Add('0f bf', 'movsx', [('reg', 32), ('rm', 16)])
 
   # Added in the 486.
@@ -889,7 +923,8 @@ def GetRoot():
   core = GetCoreRoot()
   Log('Memory access instructions...')
   mem = TrieOfList(['65'], DftLabel('gs_prefix', None,
-                                    GetCoreRoot(mem_access_only=True)))
+                                    GetCoreRoot(mem_access_only=True,
+                                                gs_access_only=True)))
   Log('Locked instructions...')
   lock = TrieOfList(['f0'], DftLabel('lock_prefix', None,
                                      GetCoreRoot(mem_access_only=True,
@@ -971,7 +1006,7 @@ def Main():
       bits=32)
   Log('Testing all ModRM bytes with gs...')
   objdump_check.DisassembleTest(
-      lambda: GetAll(FilterPrefix(['65', '01'], trie_root)),
+      lambda: GetAll(FilterPrefix(['65', '89'], trie_root)),
       bits=32)
 
   Log('Converting to DFA...')
