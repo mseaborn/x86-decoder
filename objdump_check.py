@@ -11,14 +11,36 @@ def MapWildcard(byte):
     return byte
 
 
+# The assembler does not accept the %eiz syntax for non-canonical encodings.
+eiz_regexp = re.compile(r'eiz\*[1248]')
+
+
+def FillOutValues(desc):
+  return (desc
+          .replace('VALUE32', '0x11111111')
+          .replace('VALUE16', '0x1111')
+          .replace('VALUE8', '0x11'))
+
+
 def DisassembleTestCallback(get_instructions, bits):
-  asm_fh = open('tmp.S', 'w')
+  # The main purpose of this test is to run instructions through the
+  # disassembler.  But we *also* run them through the assembler as a
+  # sanity check, because sometimes the assembler is stricter than the
+  # disassembler.  For example, the assembler rejects the illegal
+  # instruction 'movlpd %xmm7, %xmm7' but the disassembler does not.
+  # However, we do not check the assembler's output because encodings
+  # can be non-canonical.
+  asm_dec_fh = open('tmp_dec.S', 'w')
+  asm_enc_fh = open('tmp_enc.S', 'w')
+  asm_enc_fh.write('.intel_syntax noprefix\n')
   list_fh = open('tmp.list', 'w')
   count = [0]
 
   def Callback(bytes, desc):
     escaped_bytes = ''.join('\\x' + MapWildcard(byte) for byte in bytes)
-    asm_fh.write('.ascii "%s"\n' % escaped_bytes)
+    asm_dec_fh.write('.ascii "%s"\n' % escaped_bytes)
+    if eiz_regexp.search(desc) is None:
+      asm_enc_fh.write(FillOutValues(desc + '\n'))
     list_fh.write('%s:%s\n' % (' '.join(bytes), desc))
     count[0] += 1
 
@@ -27,10 +49,14 @@ def DisassembleTestCallback(get_instructions, bits):
   # Add a final instruction otherwise we do not catch length
   # mismatches on the last input instruction.
   Callback(['90'], 'nop')
-  asm_fh.close()
+  asm_dec_fh.close()
+  asm_enc_fh.close()
   list_fh.close()
-  subprocess.check_call(['gcc', '-c', '-m%i' % bits, 'tmp.S', '-o', 'tmp.o'])
-  CrossCheck('tmp.o', 'tmp.list')
+  subprocess.check_call(['gcc', '-c', '-m%i' % bits, 'tmp_dec.S',
+                         '-o', 'tmp_dec.o'])
+  CrossCheck('tmp_dec.o', 'tmp.list')
+  subprocess.check_call(['gcc', '-c', '-m%i' % bits, 'tmp_enc.S',
+                         '-o', 'tmp_enc.o'])
 
 
 whitespace_regexp = re.compile('\s+')
@@ -83,11 +109,11 @@ def ReadListFile(fh):
 
 
 def CrossCheck(obj_file, list_file):
-  objdump_iter = MungeData16(ReadObjdump('tmp.o'))
+  objdump_iter = MungeData16(ReadObjdump(obj_file))
   expected_addr = 0
   prev_length = 0
   failed = False
-  for index, (bytes, desc) in enumerate(ReadListFile(open('tmp.list'))):
+  for index, (bytes, desc) in enumerate(ReadListFile(open(list_file))):
     got_addr, disasm_orig = objdump_iter.next()
     if got_addr != expected_addr:
       # This only catches mismatches on the previous instruction,

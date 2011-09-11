@@ -23,6 +23,8 @@ regs_by_size = {
   8: regs8,
   'x87': regs_x87,
   'xmm': regs_xmm,
+  'xmm32': regs_xmm,
+  'xmm64': regs_xmm,
   }
 
 mem_sizes = {
@@ -31,6 +33,8 @@ mem_sizes = {
   16: 'WORD PTR ',
   8: 'BYTE PTR ',
   'xmm': 'XMMWORD PTR ',
+  'xmm32': 'DWORD PTR ',
+  'xmm64': 'QWORD PTR ',
   'lea_mem': '',
   80: 'TBYTE PTR ',
   'other_x87_size': '',
@@ -715,6 +719,24 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   Add('0f 16', 'movhps', [('reg', 'xmm'), ('mem', 64)])
   Add('0f 16', 'movlhps', [('reg', 'xmm'), ('reg2', 'xmm')])
   Add('0f 17', 'movhps', [('mem', 64), ('reg', 'xmm')])
+
+  Add('f3 0f 10', 'movss', [('reg', 'xmm'), ('rm', 'xmm32')])
+  Add('f3 0f 11', 'movss', [('rm', 'xmm32'), ('reg', 'xmm')])
+  Add('f3 0f 12', 'movsldup', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('f3 0f 16', 'movshdup', [('reg', 'xmm'), ('rm', 'xmm')])
+
+  Add('66 0f 10', 'movupd', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('66 0f 11', 'movupd', [('rm', 'xmm'), ('reg', 'xmm')])
+  Add('66 0f 12', 'movlpd', [('reg', 'xmm'), ('mem', 64)])
+  Add('66 0f 13', 'movlpd', [('mem', 64), ('reg', 'xmm')])
+  Add('66 0f 14', 'unpcklpd', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('66 0f 15', 'unpckhpd', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('66 0f 16', 'movhpd', [('reg', 'xmm'), ('mem', 64)])
+  Add('66 0f 17', 'movhpd', [('mem', 64), ('reg', 'xmm')])
+
+  Add('f2 0f 10', 'movsd', [('reg', 'xmm'), ('rm', 'xmm64')])
+  Add('f2 0f 11', 'movsd', [('rm', 'xmm64'), ('reg', 'xmm')])
+  Add('f2 0f 12', 'movddup', [('reg', 'xmm'), ('rm', 'xmm64')])
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
