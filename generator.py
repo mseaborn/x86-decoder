@@ -738,6 +738,16 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   Add('f2 0f 11', 'movsd', [('rm', 'xmm64'), ('reg', 'xmm')])
   Add('f2 0f 12', 'movddup', [('reg', 'xmm'), ('rm', 'xmm64')])
 
+  # Skip 0f 2x ('mov' on control registers)
+
+  Add('0f 31', 'rdtsc', [])
+  if not nacl_mode:
+    Add('0f 30', 'wrmsr', [])
+    Add('0f 32', 'rdmsr', [])
+    Add('0f 33', 'rdpmc', [])
+    Add('0f 34', 'sysenter', [])
+    Add('0f 35', 'sysexit', [])
+
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
     AddLW2('0f ' + Byte(0x40 + cond_num), 'cmov' + cond_name, ['reg', 'rm'])
