@@ -482,7 +482,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
         labels.append(('relative_jump', size / 8))
       elif kind == '*ax':
         SimpleArg(regs_by_size[size][0])
-      elif kind in ('1', 'cl'):
+      elif kind in ('1', 'cl', 'st'):
         SimpleArg(kind)
       elif isinstance(kind, tuple) and len(kind) == 2 and kind[0] == 'fixreg':
         SimpleArg(regs_by_size[size][kind[1]])
@@ -523,37 +523,16 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     top_nodes.append(node)
 
   def AddFPMem(bytes, instr_name, modrm_opcode, size=32):
-    if lockable_only or (nacl_mode and gs_access_only):
-      return
-    labels = [('instr_name', instr_name),
-              ('args', [(True, 'rm')])]
-    nodes = []
-    for mod, reg2, node in ModRMMem(size, trie.AcceptNode):
-      nodes.append(TrieOfList([Byte((mod << 6) | (modrm_opcode << 3) | reg2)],
-                              DftLabel('test_keep', mod == 0 and reg2 == 0,
-                                       DftLabels(labels, node))))
-    node = MergeMany(nodes, NoMerge)
-    top_nodes.append(TrieOfList(bytes.split(), node))
+    Add(bytes, instr_name, [('mem', size)], modrm_opcode=modrm_opcode)
+
+  x87_formats = {
+      'st reg': [('st', 'x87'), ('reg2', 'x87')],
+      'reg st': [('reg2', 'x87'), ('st', 'x87')],
+      'reg': [('reg2', 'x87')],
+      }
 
   def AddFPReg(bytes, instr_name, modrm_opcode, format='st reg'):
-    if mem_access_only or lockable_only:
-      return
-    labels = [('instr_name', instr_name)]
-    if format == 'st reg':
-      labels.append(('args', [(False, 'st'), (True, 'rm')]))
-    elif format == 'reg st':
-      labels.append(('args', [(True, 'rm'), (False, 'st')]))
-    elif format == 'reg':
-      labels.append(('args', [(True, 'rm')]))
-    else:
-      raise AssertionError('Unrecognised format: %s' % repr(format))
-    nodes = []
-    for mod, reg2, node in ModRMReg('x87', trie.AcceptNode):
-      nodes.append(TrieOfList([Byte((mod << 6) | (modrm_opcode << 3) | reg2)],
-                              DftLabel('test_keep', reg2 == 0,
-                                       DftLabels(labels, node))))
-    node = MergeMany(nodes, NoMerge)
-    top_nodes.append(TrieOfList(bytes.split(), node))
+    Add(bytes, instr_name, x87_formats[format], modrm_opcode=modrm_opcode)
 
   def AddFPRM(bytes, instr_name, modrm_opcode, format='st reg', size=32):
     AddFPMem(bytes, instr_name, modrm_opcode, size)
