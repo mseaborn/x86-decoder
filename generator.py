@@ -155,17 +155,18 @@ def ModRMReg(rm_size, tail):
   return got
 
 
-def ModRM1(rm_size, mem_access_only, tail):
-  for result in ModRMMem(rm_size, tail):
-    yield result
-  if not mem_access_only:
+def ModRM1(rm_size, rm_allow_reg, rm_allow_mem, tail):
+  if rm_allow_mem:
+    for result in ModRMMem(rm_size, tail):
+      yield result
+  if rm_allow_reg:
     for result in ModRMReg(rm_size, tail):
       yield result
 
 
-def ModRM(reg_size, rm_size, mem_access_only, tail):
+def ModRM(reg_size, rm_size, rm_allow_reg, rm_allow_mem, tail):
   for reg, regname in enumerate(regs_by_size[reg_size]):
-    for mod, reg2, node in ModRM1(rm_size, mem_access_only, tail):
+    for mod, reg2, node in ModRM1(rm_size, rm_allow_reg, rm_allow_mem, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
                        DftLabel('reg_arg', regname, node))
 
@@ -173,9 +174,9 @@ def ModRM(reg_size, rm_size, mem_access_only, tail):
 # Although the node this function returns won't get reused, the child
 # nodes do get reused, which makes this worth memoizing.
 @Memoize
-def ModRMSingleArg(rm_size, mem_access_only, opcode, tail):
+def ModRMSingleArg(rm_size, rm_allow_reg, rm_allow_mem, opcode, tail):
   nodes = []
-  for mod, reg2, node in ModRM1(rm_size, mem_access_only, tail):
+  for mod, reg2, node in ModRM1(rm_size, rm_allow_reg, rm_allow_mem, tail):
     test_keep = (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
     nodes.append(TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)],
                             DftLabel('test_keep', test_keep, node)))
@@ -284,8 +285,8 @@ def ImmediateNode(immediate_size):
 
 
 @Memoize
-def ModRMNode(reg_size, rm_size, mem_access_only, immediate_size):
-  nodes = list(ModRM(reg_size, rm_size, mem_access_only,
+def ModRMNode(reg_size, rm_size, rm_allow_reg, rm_allow_mem, immediate_size):
+  nodes = list(ModRM(reg_size, rm_size, rm_allow_reg, rm_allow_mem,
                      ImmediateNode(immediate_size)))
   node = MergeMany(nodes, NoMerge)
   return TrieNode(dict((key, DftLabel('test_keep', key == '00' or key == 'ff',
@@ -293,10 +294,10 @@ def ModRMNode(reg_size, rm_size, mem_access_only, immediate_size):
                        for key, value in node.children.iteritems()))
 
 
-def ModRMSingleArgNode(rm_size, mem_access_only, opcode, labels,
-                       immediate_size):
-  node = ModRMSingleArg(rm_size, mem_access_only, opcode,
-                        ImmediateNode(immediate_size))
+# In cases where the instruction name and format depend on the
+# contents of the ModRM byte, we need to apply the labels after the
+# ModRM byte.
+def PushLabels(labels, node):
   return TrieNode(dict((key, DftLabels(labels, value))
                        for key, value in node.children.iteritems()))
 
@@ -426,6 +427,8 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
 
     immediate_size = 0 # Size in bits
     rm_size = None
+    rm_allow_reg = not mem_access_only
+    rm_allow_mem = True
     reg_size = None
     out_args = []
     labels = []
@@ -451,10 +454,20 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
         out_args.append((True, 'rm'))
       elif kind == 'mem':
         assert rm_size is None
+        # TODO: Change this to just 'rm_size = size'.
         rm_size = 'mem%i' % size
+        rm_allow_reg = False
         out_args.append((True, 'rm'))
         mem_access = True
+      elif kind == 'reg2':
+        # Register specified by the ModRM r/m field.  This is like the
+        # 'rm' kind except that no memory access is allowed.
+        assert rm_size is None
+        rm_size = size
+        rm_allow_mem = False
+        out_args.append((True, 'rm'))
       elif kind == 'reg':
+        # Register specified by the ModRM reg field.
         assert reg_size is None
         reg_size = size
         out_args.append((True, kind))
@@ -491,11 +504,16 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
 
     if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
-      node = ModRMNode(reg_size, rm_size, mem_access_only, immediate_size)
+      node = ModRMNode(reg_size, rm_size, rm_allow_reg, rm_allow_mem,
+                       immediate_size)
+      if not (rm_allow_reg and rm_allow_mem):
+        node = PushLabels(labels, node)
+        labels = []
     elif rm_size is not None and reg_size is None:
       assert modrm_opcode is not None
-      node = ModRMSingleArgNode(rm_size, mem_access_only, modrm_opcode, labels,
-                                immediate_size)
+      node = ModRMSingleArg(rm_size, rm_allow_reg, rm_allow_mem,
+                            modrm_opcode, ImmediateNode(immediate_size))
+      node = PushLabels(labels, node)
       labels = []
     elif rm_size is None and reg_size is None:
       assert modrm_opcode is None
@@ -714,10 +732,12 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   Add('0f 10', 'movups', [('reg', 'xmm'), ('rm', 'xmm')])
   Add('0f 11', 'movups', [('rm', 'xmm'), ('reg', 'xmm')])
   Add('0f 12', 'movlps', [('reg', 'xmm'), ('mem', 64)])
+  Add('0f 12', 'movhlps', [('reg', 'xmm'), ('reg2', 'xmm')])
   Add('0f 13', 'movlps', [('mem', 64), ('reg', 'xmm')])
   Add('0f 14', 'unpcklps', [('reg', 'xmm'), ('rm', 'xmm')])
   Add('0f 15', 'unpckhps', [('reg', 'xmm'), ('rm', 'xmm')])
   Add('0f 16', 'movhps', [('reg', 'xmm'), ('mem', 64)])
+  Add('0f 16', 'movlhps', [('reg', 'xmm'), ('reg2', 'xmm')])
   Add('0f 17', 'movhps', [('mem', 64), ('reg', 'xmm')])
 
   for cond_num, cond_name in enumerate(cond_codes):
