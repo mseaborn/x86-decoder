@@ -26,16 +26,14 @@ regs_by_size = {
   }
 
 mem_sizes = {
+  64: 'QWORD PTR ',
   32: 'DWORD PTR ',
   16: 'WORD PTR ',
   8: 'BYTE PTR ',
   'xmm': 'XMMWORD PTR ',
   'lea_mem': '',
+  80: 'TBYTE PTR ',
   'other_x87_size': '',
-  'mem32': 'DWORD PTR ',
-  '8byte': 'QWORD PTR ',
-  'mem64': 'QWORD PTR ',
-  'mem80': 'TBYTE PTR ',
   }
 
 cond_codes = (
@@ -148,10 +146,9 @@ def ModRMMem(rm_size, tail):
 @Memoize
 def ModRMReg(rm_size, tail):
   got = []
-  if rm_size not in ('lea_mem', 'mem32', 'mem64', '8byte'):
-    mod = 3
-    for reg2, regname2 in enumerate(regs_by_size[rm_size]):
-      got.append((mod, reg2, DftLabel('rm_arg', regname2, tail)))
+  mod = 3
+  for reg2, regname2 in enumerate(regs_by_size[rm_size]):
+    got.append((mod, reg2, DftLabel('rm_arg', regname2, tail)))
   return got
 
 
@@ -451,11 +448,11 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
         assert rm_size is None
         # For 'lea', the size is really irrelevant.
         rm_size = 'lea_mem'
+        rm_allow_reg = False
         out_args.append((True, 'rm'))
       elif kind == 'mem':
         assert rm_size is None
-        # TODO: Change this to just 'rm_size = size'.
-        rm_size = 'mem%i' % size
+        rm_size = size
         rm_allow_reg = False
         out_args.append((True, 'rm'))
         mem_access = True
@@ -784,7 +781,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   # Added in the 486.
   AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
   AddPair2('0f', 0xc0, 'xadd', ['rm', 'reg'])
-  Add('0f c7', 'cmpxchg8b', [('rm', '8byte')], modrm_opcode=1)
+  Add('0f c7', 'cmpxchg8b', [('mem', 64)], modrm_opcode=1)
   for reg_num in range(8):
     # bswap is undefined when used with the data16 prefix (because
     # xchgw could be used for swapping bytes in a word instead),
@@ -876,8 +873,8 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddFPMem('db', 'fist', modrm_opcode=2)
   AddFPMem('db', 'fistp', modrm_opcode=3)
   # skip 4 and 6
-  AddFPMem('db', 'fld', modrm_opcode=5, size='mem80')
-  AddFPMem('db', 'fstp', modrm_opcode=7, size='mem80')
+  AddFPMem('db', 'fld', modrm_opcode=5, size=80)
+  AddFPMem('db', 'fstp', modrm_opcode=7, size=80)
 
   AddFPReg('db', 'fcmovnb', modrm_opcode=0)
   AddFPReg('db', 'fcmovne', modrm_opcode=1)
@@ -889,19 +886,19 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddFPReg('db', 'fucomi', modrm_opcode=5)
   AddFPReg('db', 'fcomi', modrm_opcode=6)
 
-  AddFPRM('dc', 'fadd', modrm_opcode=0, size='mem64', format='reg st')
-  AddFPRM('dc', 'fmul', modrm_opcode=1, size='mem64', format='reg st')
-  AddFPMem('dc', 'fcom', modrm_opcode=2, size='mem64')
-  AddFPMem('dc', 'fcomp', modrm_opcode=3, size='mem64')
-  AddFPRM('dc', 'fsub', modrm_opcode=4, size='mem64', format='reg st')
-  AddFPRM('dc', 'fsubr', modrm_opcode=5, size='mem64', format='reg st')
-  AddFPRM('dc', 'fdiv', modrm_opcode=6, size='mem64', format='reg st')
-  AddFPRM('dc', 'fdivr', modrm_opcode=7, size='mem64', format='reg st')
+  AddFPRM('dc', 'fadd', modrm_opcode=0, size=64, format='reg st')
+  AddFPRM('dc', 'fmul', modrm_opcode=1, size=64, format='reg st')
+  AddFPMem('dc', 'fcom', modrm_opcode=2, size=64)
+  AddFPMem('dc', 'fcomp', modrm_opcode=3, size=64)
+  AddFPRM('dc', 'fsub', modrm_opcode=4, size=64, format='reg st')
+  AddFPRM('dc', 'fsubr', modrm_opcode=5, size=64, format='reg st')
+  AddFPRM('dc', 'fdiv', modrm_opcode=6, size=64, format='reg st')
+  AddFPRM('dc', 'fdivr', modrm_opcode=7, size=64, format='reg st')
 
-  AddFPMem('dd', 'fld', modrm_opcode=0, size='mem64')
-  AddFPMem('dd', 'fisttp', modrm_opcode=1, size='mem64')
-  AddFPRM('dd', 'fst', modrm_opcode=2, size='mem64', format='reg')
-  AddFPRM('dd', 'fstp', modrm_opcode=3, size='mem64', format='reg')
+  AddFPMem('dd', 'fld', modrm_opcode=0, size=64)
+  AddFPMem('dd', 'fisttp', modrm_opcode=1, size=64)
+  AddFPRM('dd', 'fst', modrm_opcode=2, size=64, format='reg')
+  AddFPRM('dd', 'fstp', modrm_opcode=3, size=64, format='reg')
   AddFPMem('dd', 'frstor', modrm_opcode=4, size='other_x87_size')
   # skip 5
   AddFPMem('dd', 'fnsave', modrm_opcode=6, size='other_x87_size')
@@ -933,10 +930,10 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddFPMem('df', 'fisttp', modrm_opcode=1, size=16)
   AddFPMem('df', 'fist', modrm_opcode=2, size=16)
   AddFPMem('df', 'fistp', modrm_opcode=3, size=16)
-  AddFPMem('df', 'fbld', modrm_opcode=4, size='mem80')
-  AddFPMem('df', 'fild', modrm_opcode=5, size='mem64')
-  AddFPMem('df', 'fbstp', modrm_opcode=6, size='mem80')
-  AddFPMem('df', 'fistp', modrm_opcode=7, size='mem64')
+  AddFPMem('df', 'fbld', modrm_opcode=4, size=80)
+  AddFPMem('df', 'fild', modrm_opcode=5, size=64)
+  AddFPMem('df', 'fbstp', modrm_opcode=6, size=80)
+  AddFPMem('df', 'fistp', modrm_opcode=7, size=64)
   # skip 0-3
   Add('df e0', 'fnstsw', [('*ax', 16)])
   AddFPReg('df', 'fucomip', modrm_opcode=5)
