@@ -14,18 +14,22 @@ def Byte(x):
 regs32 = ('eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi')
 regs16 = ('ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di')
 regs8 = ('al', 'cl', 'dl', 'bl', 'ah', 'ch', 'dh', 'bh')
+regs_x87 = ['st(%i)' % regnum for regnum in range(8)]
+regs_xmm = ['xmm%i' % regnum for regnum in range(8)]
 
 regs_by_size = {
   32: regs32,
   16: regs16,
   8: regs8,
-  'x87': ['st(%i)' % regnum for regnum in range(8)],
+  'x87': regs_x87,
+  'xmm': regs_xmm,
   }
 
 mem_sizes = {
   32: 'DWORD PTR ',
   16: 'WORD PTR ',
   8: 'BYTE PTR ',
+  'xmm': 'XMMWORD PTR ',
   'lea_mem': '',
   'other_x87_size': '',
   'mem32': 'DWORD PTR ',
@@ -144,7 +148,7 @@ def ModRMMem(rm_size, tail):
 @Memoize
 def ModRMReg(rm_size, tail):
   got = []
-  if rm_size not in ('lea_mem', 'mem32', '8byte'):
+  if rm_size not in ('lea_mem', 'mem32', 'mem64', '8byte'):
     mod = 3
     for reg2, regname2 in enumerate(regs_by_size[rm_size]):
       got.append((mod, reg2, DftLabel('rm_arg', regname2, tail)))
@@ -706,6 +710,15 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     AddLW(0xb8 + reg_num, 'mov', [('fixreg', reg_num), 'imm'])
 
   # Two-byte opcodes.
+
+  Add('0f 10', 'movups', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('0f 11', 'movups', [('rm', 'xmm'), ('reg', 'xmm')])
+  Add('0f 12', 'movlps', [('reg', 'xmm'), ('mem', 64)])
+  Add('0f 13', 'movlps', [('mem', 64), ('reg', 'xmm')])
+  Add('0f 14', 'unpcklps', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('0f 15', 'unpckhps', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('0f 16', 'movhps', [('reg', 'xmm'), ('mem', 64)])
+  Add('0f 17', 'movhps', [('mem', 64), ('reg', 'xmm')])
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
