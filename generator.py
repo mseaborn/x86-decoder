@@ -45,6 +45,22 @@ cond_codes = (
   's', 'ns', 'p', 'np', 'l', 'ge', 'le', 'g',
   )
 
+form_position_map = {
+    'G': 'reg',
+    'R': 'reg2',
+    'U': 'reg2', # %xmm
+    'V': 'reg', # %xmm
+    'W': 'rm', # %xmm
+    }
+
+form_size_map = {
+    'd': 32,
+    'pd': 'xmm64',
+    'ps': 'xmm',
+    'sd': 'xmm64',
+    'ss': 'xmm32',
+    }
+
 
 time0 = time.time()
 prev_time = time0
@@ -561,6 +577,11 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     Add(prefix + ' ' + Byte(opcode), instr, SubstSize(format, 8), **kwargs)
     AddLW2(prefix + ' ' + Byte(opcode + 1), instr, format, **kwargs)
 
+  def AddForm(bytes, instr_name, format):
+    def MapArg(arg):
+      return (form_position_map[arg[0]], form_size_map[arg[1:]])
+    Add(bytes, instr_name, map(MapArg, format.split()))
+
   # Arithmetic instructions
   for arith_opcode, instr in enumerate(['add', 'or', 'adc', 'sbb',
                                         'and', 'sub', 'xor', 'cmp']):
@@ -747,6 +768,26 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     Add('0f 33', 'rdpmc', [])
     Add('0f 34', 'sysenter', [])
     Add('0f 35', 'sysexit', [])
+
+  AddForm('0f 50', 'movmskps', 'Gd Ups')
+  AddForm('0f 51', 'sqrtps', 'Vps Wps')
+  AddForm('0f 52', 'rsqrtps', 'Vps Rps')
+  AddForm('0f 53', 'rcpps', 'Vps Wps')
+  AddForm('0f 54', 'andps', 'Vps Wps')
+  AddForm('0f 55', 'andnps', 'Vps Wps')
+  AddForm('0f 56', 'orps', 'Vps Wps')
+  AddForm('0f 57', 'xorps', 'Vps Wps')
+  AddForm('f3 0f 51', 'sqrtss', 'Vss Wss')
+  AddForm('f3 0f 52', 'rsqrtss', 'Vss Wss')
+  AddForm('f3 0f 53', 'rcpss', 'Vss Wss')
+  AddForm('66 0f 50', 'movmskpd', 'Gd Upd')
+  # The AMD manual says 'Vpd Wpd' for these, but it doesn't match objdump.
+  AddForm('66 0f 51', 'sqrtpd', 'Vpd Wps')
+  AddForm('66 0f 54', 'andpd', 'Vpd Wps')
+  AddForm('66 0f 55', 'andnpd', 'Vpd Wps')
+  AddForm('66 0f 56', 'orpd', 'Vpd Wps')
+  AddForm('66 0f 57', 'xorpd', 'Vpd Wps')
+  AddForm('f2 0f 51', 'sqrtsd', 'Vsd Wsd')
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
