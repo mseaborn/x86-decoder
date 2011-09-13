@@ -15,6 +15,7 @@ regs32 = ('eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi')
 regs16 = ('ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di')
 regs8 = ('al', 'cl', 'dl', 'bl', 'ah', 'ch', 'dh', 'bh')
 regs_x87 = ['st(%i)' % regnum for regnum in range(8)]
+regs_mmx = ['mm%i' % regnum for regnum in range(8)]
 regs_xmm = ['xmm%i' % regnum for regnum in range(8)]
 
 regs_by_size = {
@@ -22,6 +23,9 @@ regs_by_size = {
   16: regs16,
   8: regs8,
   'x87': regs_x87,
+  'mmx': regs_mmx,
+  'mmx32': regs_mmx,
+  'mmx64': regs_mmx,
   'xmm': regs_xmm,
   'xmm32': regs_xmm,
   'xmm64': regs_xmm,
@@ -32,6 +36,8 @@ mem_sizes = {
   32: 'DWORD PTR ',
   16: 'WORD PTR ',
   8: 'BYTE PTR ',
+  'mmx32': 'DWORD PTR ',
+  'mmx64': 'QWORD PTR ',
   'xmm': 'XMMWORD PTR ',
   'xmm32': 'DWORD PTR ',
   'xmm64': 'QWORD PTR ',
@@ -45,6 +51,14 @@ cond_codes = (
   's', 'ns', 'p', 'np', 'l', 'ge', 'le', 'g',
   )
 
+form_map = {
+    'Ib': ('imm', 8),
+    'Pd': ('reg', 'mmx'),
+    'Pq': ('reg', 'mmx'),
+    'Qd': ('rm', 'mmx32'),
+    'Qq': ('rm', 'mmx64'),
+    }
+
 form_position_map = {
     'G': 'reg',
     'R': 'reg2',
@@ -55,10 +69,12 @@ form_position_map = {
 
 form_size_map = {
     'd': 32,
+    'dq': 'xmm',
     'pd': 'xmm64',
     'ps': 'xmm',
     'sd': 'xmm64',
     'ss': 'xmm32',
+    'q': 'xmm',
     }
 
 
@@ -579,7 +595,10 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
 
   def AddForm(bytes, instr_name, format):
     def MapArg(arg):
-      return (form_position_map[arg[0]], form_size_map[arg[1:]])
+      if arg in form_map:
+        return form_map[arg]
+      else:
+        return (form_position_map[arg[0]], form_size_map[arg[1:]])
     Add(bytes, instr_name, map(MapArg, format.split()))
 
   # Arithmetic instructions
@@ -788,6 +807,38 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('66 0f 56', 'orpd', 'Vpd Wps')
   AddForm('66 0f 57', 'xorpd', 'Vpd Wps')
   AddForm('f2 0f 51', 'sqrtsd', 'Vsd Wsd')
+
+  # MMX
+  AddForm('0f 60', 'punpcklbw', 'Pq Qd')
+  AddForm('0f 61', 'punpcklwd', 'Pq Qd')
+  AddForm('0f 62', 'punpckldq', 'Pq Qd')
+  AddForm('0f 63', 'packsswb', 'Pq Qq')
+  AddForm('0f 64', 'pcmpgtb', 'Pq Qq')
+  AddForm('0f 65', 'pcmpgtw', 'Pq Qq')
+  AddForm('0f 66', 'pcmpgtd', 'Pq Qq')
+  AddForm('0f 67', 'packuswb', 'Pq Qq')
+
+  # SSE
+  AddForm('66 0f 60', 'punpcklbw', 'Vdq Wq')
+  AddForm('66 0f 61', 'punpcklwd', 'Vdq Wq')
+  AddForm('66 0f 62', 'punpckldq', 'Vdq Wq')
+  AddForm('66 0f 63', 'packsswb', 'Vdq Wdq')
+  AddForm('66 0f 64', 'pcmpgtb', 'Vdq Wdq')
+  AddForm('66 0f 65', 'pcmpgtw', 'Vdq Wdq')
+  AddForm('66 0f 66', 'pcmpgtd', 'Vdq Wdq')
+  AddForm('66 0f 67', 'packuswb', 'Vdq Wdq')
+
+  AddForm('0f 70', 'pshufw', 'Pq Qq Ib')
+  AddForm('f3 0f 70', 'pshufhw', 'Vq Wq Ib')
+  AddForm('66 0f 70', 'pshufd', 'Vdq Wdq Ib')
+  AddForm('f2 0f 70', 'pshuflw', 'Vq Wq Ib')
+  AddForm('0f 74', 'pcmpeqb', 'Pq Qq')
+  AddForm('0f 75', 'pcmpeqw', 'Pq Qq')
+  AddForm('0f 76', 'pcmpeqd', 'Pq Qq')
+  AddForm('0f 77', 'emms', '')
+  AddForm('66 0f 74', 'pcmpeqb', 'Vdq Wdq')
+  AddForm('66 0f 75', 'pcmpeqw', 'Vdq Wdq')
+  AddForm('66 0f 76', 'pcmpeqd', 'Vdq Wdq')
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
