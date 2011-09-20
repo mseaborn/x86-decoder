@@ -69,11 +69,11 @@ form_position_map = {
 
 form_size_map = {
     'd': 32,
-    'dq': 'xmm',
-    'pd': 'xmm64',
-    'ps': 'xmm',
-    'sd': 'xmm64',
-    'ss': 'xmm32',
+    'dq': 'xmm',   # XMMWORD
+    'pd': 'xmm64', # QWORD
+    'ps': 'xmm',   # XMMWORD
+    'sd': 'xmm64', # QWORD
+    'ss': 'xmm32', # DWORD
     'q': 'xmm',
     }
 
@@ -890,6 +890,25 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     # xchgw could be used for swapping bytes in a word instead),
     # although objdump decodes such instructions.
     Add('0f ' + Byte(0xc8 + reg_num), 'bswap', [(('fixreg', reg_num), 32)])
+
+  AddForm('0f c2', 'cmpps', 'Vps Wps Ib')
+  AddForm('f3 0f c2', 'cmpss', 'Vss Wss Ib')
+  # AMD manual says 'Wpd' but the disassembler uses XMMWORD not QWORD.
+  AddForm('66 0f c2', 'cmppd', 'Vpd Wdq Ib')
+  AddForm('f2 0f c2', 'cmpsd', 'Vsd Wsd Ib')
+  # binutils incorrectly disassembles 'movnti' with 'QWORD PTR', even
+  # though the assembler only accepts 'DWORD PTR'.
+  Add('0f c3', 'FIXME movnti', [('mem', 32), ('reg', 32)])
+  # Even though pinsrw only uses the bottom 16 bits of the source
+  # register, it is written as using a 32-bit register.  The 2nd arg
+  # is 'mem16/reg32'.
+  Add('0f c4', 'pinsrw', [('reg', 'mmx'), ('mem', 16), ('imm', 8)])
+  Add('0f c4', 'pinsrw', [('reg', 'mmx'), ('reg2', 32), ('imm', 8)])
+  Add('66 0f c4', 'pinsrw', [('reg', 'xmm'), ('mem', 16), ('imm', 8)])
+  Add('66 0f c4', 'pinsrw', [('reg', 'xmm'), ('reg2', 32), ('imm', 8)])
+  Add('0f c5', 'pextrw', [('reg', 32), ('reg2', 'mmx'), ('imm', 8)])
+  Add('66 0f c5', 'pextrw', [('reg', 32), ('reg2', 'xmm'), ('imm', 8)])
+  # TODO: 0f c6/c7
 
   # SSE
   Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)

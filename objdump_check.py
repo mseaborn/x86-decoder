@@ -39,7 +39,7 @@ def DisassembleTestCallback(get_instructions, bits):
   def Callback(bytes, desc):
     escaped_bytes = ''.join('\\x' + MapWildcard(byte) for byte in bytes)
     asm_dec_fh.write('.ascii "%s"\n' % escaped_bytes)
-    if eiz_regexp.search(desc) is None:
+    if eiz_regexp.search(desc) is None and not desc.startswith('FIXME'):
       asm_enc_fh.write(FillOutValues(desc + '\n'))
     list_fh.write('%s:%s\n' % (' '.join(bytes), desc))
     count[0] += 1
@@ -127,6 +127,9 @@ def CrossCheck(obj_file, list_file):
     prev_length = len(bytes)
 
     disasm = NormaliseObjdumpDisasm(disasm_orig)
+    if desc.startswith('FIXME'):
+      # Some instructions are not handled correctly by binutils.
+      continue
     if desc != disasm:
       print 'Mismatch (%i): %r != %r (%r) (%s)' % (
         index, desc, disasm, disasm_orig, ' '.join(bytes))
