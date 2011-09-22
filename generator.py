@@ -857,6 +857,27 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('66 0f 57', 'xorpd', 'Vpd Wpd')
   AddForm('f2 0f 51', 'sqrtsd', 'Vsd Wsd')
 
+  for opcode, name in [('0f 58', 'add'),
+                       ('0f 59', 'mul'),
+                       ('0f 5c', 'sub'),
+                       ('0f 5d', 'min'),
+                       ('0f 5e', 'div'),
+                       ('0f 5f', 'max')]:
+    AddForm(opcode, name + 'ps', 'Vps Wps')
+    AddForm('f3 ' + opcode, name + 'ss', 'Vss Wss')
+    AddForm('66 ' + opcode, name + 'pd', 'Vpd Wpd')
+    AddForm('f2 ' + opcode, name + 'sd', 'Vsd Wsd')
+  # The AMD manual has 'Vpd Wps', but 'Wps' is not correct because the
+  # operand is 64-bit.
+  Add('0f 5a', 'cvtps2pd', [('reg', 'xmm'), ('rm', 'xmm64')])
+  AddForm('f3 0f 5a', 'cvtss2sd', 'Vsd Wss')
+  AddForm('66 0f 5a', 'cvtpd2ps', 'Vps Wpd')
+  AddForm('f2 0f 5a', 'cvtsd2ss', 'Vss Wsd')
+  AddForm('0f 5b', 'cvtdq2ps', 'Vps Wdq')
+  AddForm('f3 0f 5b', 'cvttps2dq', 'Vdq Wps')
+  AddForm('66 0f 5b', 'cvtps2dq', 'Vdq Wps')
+  # 'f3 0f 5b' is invalid.
+
   # MMX
   AddForm('0f 60', 'punpcklbw', 'Pq Qd')
   AddForm('0f 61', 'punpcklwd', 'Pq Qd')
@@ -878,6 +899,20 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('66 0f 65', 'pcmpgtw', 'Vdq Wdq')
   AddForm('66 0f 66', 'pcmpgtd', 'Vdq Wdq')
   AddForm('66 0f 67', 'packuswb', 'Vdq Wdq')
+
+  AddSSEMMXPair('0f 68', 'punpckhbw')
+  AddSSEMMXPair('0f 69', 'punpckhwd')
+  AddSSEMMXPair('0f 6a', 'punpckhdq')
+  AddSSEMMXPair('0f 6b', 'packssdw')
+  # The AMD manual says 'Wq' rather than 'Wdq' for punpcklqdq and
+  # punpckhqdq, but it seems to be wrong.
+  AddForm('66 0f 6c', 'punpcklqdq', 'Vdq Wdq')
+  AddForm('66 0f 6d', 'punpckhqdq', 'Vdq Wdq')
+  AddForm('0f 6e', 'movd', 'Pq Ed') # Ed/q
+  AddForm('66 0f 6e', 'movd', 'Vdq Ed') # Ed/q
+  AddForm('0f 6f', 'movq', 'Pq Qq')
+  AddForm('f3 0f 6f', 'movdqu', 'Vdq Wdq')
+  AddForm('66 0f 6f', 'movdqa', 'Vdq Wdq')
 
   # The AMD manual says 'Wq' rather than 'Wdq' for pshufhw and
   # pshuflw, but it seems to be wrong.
