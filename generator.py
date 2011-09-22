@@ -44,6 +44,7 @@ mem_sizes = {
   'lea_mem': '',
   80: 'TBYTE PTR ',
   'other_x87_size': '',
+  'lddqu_size': '', # Should be XMMWORD, but objdump omits this.
   }
 
 cond_codes = (
@@ -66,6 +67,7 @@ form_position_map = {
     'U': 'reg2', # %xmm
     'V': 'reg', # %xmm
     'W': 'rm', # %xmm
+    'M': 'mem',
     }
 
 form_size_map = {
@@ -602,6 +604,10 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
         return (form_position_map[arg[0]], form_size_map[arg[1:]])
     Add(bytes, instr_name, map(MapArg, format.split()))
 
+  def AddSSEMMXPair(opcode, name):
+    AddForm(opcode, name, 'Pq Qq')
+    AddForm('66 ' + opcode, name, 'Vdq Wdq')
+
   # Arithmetic instructions
   for arith_opcode, instr in enumerate(['add', 'or', 'adc', 'sbb',
                                         'and', 'sub', 'xor', 'cmp']):
@@ -917,21 +923,39 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
 
   AddForm('66 0f d0', 'addsubpd', 'Vpd Wpd')
   AddForm('f2 0f d0', 'addsubps', 'Vps Wps')
-  AddForm('0f d1', 'psrlw', 'Pq Qq')
-  AddForm('0f d2', 'psrld', 'Pq Qq')
-  AddForm('0f d3', 'psrlq', 'Pq Qq')
-  AddForm('0f d4', 'paddq', 'Pq Qq')
-  AddForm('0f d5', 'pmullw', 'Pq Qq')
-  AddForm('66 0f d1', 'psrlw', 'Vdq Wdq')
-  AddForm('66 0f d2', 'psrld', 'Vdq Wdq')
-  AddForm('66 0f d3', 'psrlq', 'Vdq Wdq')
-  AddForm('66 0f d4', 'paddq', 'Vdq Wdq')
-  AddForm('66 0f d5', 'pmullw', 'Vdq Wdq')
+  AddSSEMMXPair('0f d1', 'psrlw')
+  AddSSEMMXPair('0f d2', 'psrld')
+  AddSSEMMXPair('0f d3', 'psrlq')
+  AddSSEMMXPair('0f d4', 'paddq')
+  AddSSEMMXPair('0f d5', 'pmullw')
   AddForm('f3 0f d6', 'movq2dq', 'Vdq Nq')
   AddForm('66 0f d6', 'movq', 'Wq Vq')
   AddForm('f2 0f d6', 'movdq2q', 'Pq Uq')
   AddForm('0f d7', 'pmovmskb', 'Gd Nq')
   AddForm('66 0f d7', 'pmovmskb', 'Gd Udq')
+
+  AddSSEMMXPair('0f e0', 'pavgb')
+  AddSSEMMXPair('0f e1', 'psraw')
+  AddSSEMMXPair('0f e2', 'psrad')
+  AddSSEMMXPair('0f e3', 'pavgw')
+  AddSSEMMXPair('0f e4', 'pmulhuw')
+  AddSSEMMXPair('0f e5', 'pmulhw')
+  AddForm('f3 0f e6', 'cvtdq2pd', 'Vpd Wq')
+  AddForm('66 0f e6', 'cvttpd2dq', 'Vq Wpd')
+  AddForm('f2 0f e6', 'cvtpd2dq', 'Vq Wpd')
+  AddForm('0f e7', 'movntq', 'Mq Pq')
+  AddForm('66 0f e7', 'movntdq', 'Mdq Vdq')
+
+  # This should be 'Vpd Mdq', but objdump omits the 'XMMWORD' string.
+  Add('f2 0f f0', 'lddqu', [('reg', 'xmm'), ('mem', 'lddqu_size')]) 
+  AddSSEMMXPair('0f f1', 'psllw')
+  AddSSEMMXPair('0f f2', 'pslld')
+  AddSSEMMXPair('0f f3', 'psllq')
+  AddSSEMMXPair('0f f4', 'pmuludq')
+  AddSSEMMXPair('0f f5', 'pmaddwd')
+  AddSSEMMXPair('0f f6', 'psadbw')
+  AddForm('0f f7', 'maskmovq', 'Pq Nq')
+  AddForm('66 0f f7', 'maskmovdqu', 'Vdq Udq')
 
   # SSE
   Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
