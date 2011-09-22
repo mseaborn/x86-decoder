@@ -952,6 +952,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     Add('0f ' + Byte(0x90 + cond_num), 'set' + cond_name, [('rm', 8)],
         modrm_opcode=0)
 
+  Add('0f a2', 'cpuid', [])
   if not nacl_mode:
     # Bit test/set/clear operations
     AddLW2('0f a3', 'bt', ['rm', 'reg'])
@@ -970,6 +971,8 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddLW2('0f ac', 'shrd', ['rm', 'reg', 'imm8'])
   AddLW2('0f ad', 'shrd', ['rm', 'reg', 'cl'])
 
+  if not nacl_mode:
+    Add('0f aa', 'rsm', [])
   AddLW2('0f af', 'imul', ['reg', 'rm'])
 
   # Bit scan forwards/reverse
@@ -983,6 +986,9 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
   Add('0f be', 'movsx', [('reg', 16), ('rm', 8)], data16=True)
   Add('0f bf', 'movsx', [('reg', 32), ('rm', 16)])
+
+  AddLW2('f3 0f b8', 'popcnt', ['reg', 'rm'])
+  AddLW2('f3 0f bd', 'lzcnt', ['reg', 'rm'])
 
   # Added in the 486.
   AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
@@ -1026,6 +1032,14 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('f2 0f d6', 'movdq2q', 'Pq Uq')
   AddForm('0f d7', 'pmovmskb', 'Gd Nq')
   AddForm('66 0f d7', 'pmovmskb', 'Gd Udq')
+  AddSSEMMXPair('0f d8', 'psubusb')
+  AddSSEMMXPair('0f d9', 'psubusw')
+  AddSSEMMXPair('0f da', 'pminub')
+  AddSSEMMXPair('0f db', 'pand')
+  AddSSEMMXPair('0f dc', 'paddusb')
+  AddSSEMMXPair('0f dd', 'paddusw')
+  AddSSEMMXPair('0f de', 'pmaxub')
+  AddSSEMMXPair('0f df', 'pandn')
 
   AddSSEMMXPair('0f e0', 'pavgb')
   AddSSEMMXPair('0f e1', 'psraw')
@@ -1038,6 +1052,14 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('f2 0f e6', 'cvtpd2dq', 'Vq Wpd')
   AddForm('0f e7', 'movntq', 'Mq Pq')
   AddForm('66 0f e7', 'movntdq', 'Mdq Vdq')
+  AddSSEMMXPair('0f e8', 'psubsb')
+  AddSSEMMXPair('0f e9', 'psubsw')
+  AddSSEMMXPair('0f ea', 'pminsw')
+  AddSSEMMXPair('0f eb', 'por')
+  AddSSEMMXPair('0f ec', 'paddsb')
+  AddSSEMMXPair('0f ed', 'paddsw')
+  AddSSEMMXPair('0f ee', 'pmaxsw')
+  AddSSEMMXPair('0f ef', 'pxor')
 
   # This should be 'Vpd Mdq', but objdump omits the 'XMMWORD' string.
   Add('f2 0f f0', 'lddqu', [('reg', 'xmm'), ('mem', 'lddqu_size')]) 
@@ -1049,6 +1071,13 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddSSEMMXPair('0f f6', 'psadbw')
   AddForm('0f f7', 'maskmovq', 'Pq Nq')
   AddForm('66 0f f7', 'maskmovdqu', 'Vdq Udq')
+  AddSSEMMXPair('0f f8', 'psubb')
+  AddSSEMMXPair('0f f9', 'psubw')
+  AddSSEMMXPair('0f fa', 'psubd')
+  AddSSEMMXPair('0f fb', 'psubq')
+  AddSSEMMXPair('0f fc', 'paddb')
+  AddSSEMMXPair('0f fd', 'paddw')
+  AddSSEMMXPair('0f fe', 'paddd')
 
   # SSE
   Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
