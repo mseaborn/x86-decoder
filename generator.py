@@ -55,6 +55,7 @@ form_map = {
     'Ib': ('imm', 8),
     'Pd': ('reg', 'mmx'),
     'Pq': ('reg', 'mmx'),
+    'Nq': ('reg2', 'mmx'),
     'Qd': ('rm', 'mmx32'),
     'Qq': ('rm', 'mmx64'),
     }
@@ -74,7 +75,7 @@ form_size_map = {
     'ps': 'xmm',   # XMMWORD
     'sd': 'xmm64', # QWORD
     'ss': 'xmm32', # DWORD
-    'q': 'xmm',
+    'q': 'xmm64',  # QWORD
     }
 
 
@@ -818,19 +819,23 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('0f 67', 'packuswb', 'Pq Qq')
 
   # SSE
-  AddForm('66 0f 60', 'punpcklbw', 'Vdq Wq')
-  AddForm('66 0f 61', 'punpcklwd', 'Vdq Wq')
-  AddForm('66 0f 62', 'punpckldq', 'Vdq Wq')
+  # The AMD manual says 'Wq' rather than 'Wdq' for the next three, but
+  # it seems to be wrong.
+  AddForm('66 0f 60', 'punpcklbw', 'Vdq Wdq')
+  AddForm('66 0f 61', 'punpcklwd', 'Vdq Wdq')
+  AddForm('66 0f 62', 'punpckldq', 'Vdq Wdq')
   AddForm('66 0f 63', 'packsswb', 'Vdq Wdq')
   AddForm('66 0f 64', 'pcmpgtb', 'Vdq Wdq')
   AddForm('66 0f 65', 'pcmpgtw', 'Vdq Wdq')
   AddForm('66 0f 66', 'pcmpgtd', 'Vdq Wdq')
   AddForm('66 0f 67', 'packuswb', 'Vdq Wdq')
 
+  # The AMD manual says 'Wq' rather than 'Wdq' for pshufhw and
+  # pshuflw, but it seems to be wrong.
   AddForm('0f 70', 'pshufw', 'Pq Qq Ib')
-  AddForm('f3 0f 70', 'pshufhw', 'Vq Wq Ib')
+  AddForm('f3 0f 70', 'pshufhw', 'Vq Wdq Ib')
   AddForm('66 0f 70', 'pshufd', 'Vdq Wdq Ib')
-  AddForm('f2 0f 70', 'pshuflw', 'Vq Wq Ib')
+  AddForm('f2 0f 70', 'pshuflw', 'Vq Wdq Ib')
   AddForm('0f 74', 'pcmpeqb', 'Pq Qq')
   AddForm('0f 75', 'pcmpeqw', 'Pq Qq')
   AddForm('0f 76', 'pcmpeqd', 'Pq Qq')
@@ -922,6 +927,11 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('66 0f d3', 'psrlq', 'Vdq Wdq')
   AddForm('66 0f d4', 'paddq', 'Vdq Wdq')
   AddForm('66 0f d5', 'pmullw', 'Vdq Wdq')
+  AddForm('f3 0f d6', 'movq2dq', 'Vdq Nq')
+  AddForm('66 0f d6', 'movq', 'Wq Vq')
+  AddForm('f2 0f d6', 'movdq2q', 'Pq Uq')
+  AddForm('0f d7', 'pmovmskb', 'Gd Nq')
+  AddForm('66 0f d7', 'pmovmskb', 'Gd Udq')
 
   # SSE
   Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
