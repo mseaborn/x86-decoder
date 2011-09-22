@@ -54,25 +54,27 @@ cond_codes = (
 
 form_map = {
     'Ib': ('imm', 8),
+    'Gd': ('reg', 32),
+    'Ed': ('rm', 32),
+    'Md': ('mem', 32),
+    'Mq': ('mem', 64),
+    'Mdq': ('mem', 'xmm'),
     'Pd': ('reg', 'mmx'),
     'Pq': ('reg', 'mmx'),
+    'Vd': ('reg', 'xmm32'),
     'Nq': ('reg2', 'mmx'),
     'Qd': ('rm', 'mmx32'),
     'Qq': ('rm', 'mmx64'),
     }
 
 form_position_map = {
-    'G': 'reg',
     'R': 'reg2',
     'U': 'reg2', # %xmm
     'V': 'reg', # %xmm
-    'E': 'rm',
     'W': 'rm', # %xmm
-    'M': 'mem',
     }
 
 form_size_map = {
-    'd': 32,
     'dq': 'xmm',   # XMMWORD
     'pd': 'xmm',   # XMMWORD
     'ps': 'xmm',   # XMMWORD
@@ -476,8 +478,8 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
 
     for kind, size in args:
       if kind == 'imm':
-        assert immediate_size == 0
-        immediate_size = size
+        # We can have multiple immediates.  Needed for 'insertq'.
+        immediate_size += size
         SimpleArg('VALUE%i' % size)
       elif kind == 'rm':
         assert rm_size is None
@@ -927,6 +929,19 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('66 0f 74', 'pcmpeqb', 'Vdq Wdq')
   AddForm('66 0f 75', 'pcmpeqw', 'Vdq Wdq')
   AddForm('66 0f 76', 'pcmpeqd', 'Vdq Wdq')
+  AddForm('f2 0f 78', 'insertq', 'Vdq Uq Ib Ib')
+  AddForm('66 0f 79', 'extrq', 'Vdq Uq')
+  AddForm('f2 0f 79', 'insertq', 'Vdq Udq')
+  AddForm('66 0f 7c', 'haddpd', 'Vpd Wpd')
+  AddForm('f2 0f 7c', 'haddps', 'Vps Wps')
+  AddForm('66 0f 7d', 'hsubpd', 'Vpd Wpd')
+  AddForm('f2 0f 7d', 'hsubps', 'Vps Wps')
+  AddForm('0f 7e', 'movd', 'Ed Pd') # Ed/q Pd/q
+  AddForm('f3 0f 7e', 'movq', 'Vq Wq')
+  AddForm('66 0f 7e', 'movd', 'Ed Vd') # Ed/q Vd/q
+  AddForm('0f 7f', 'movq', 'Qq Pq')
+  AddForm('f3 0f 7f', 'movdqu', 'Wdq Vdq')
+  AddForm('66 0f 7f', 'movdqa', 'Wdq Vdq')
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
