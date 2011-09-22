@@ -66,6 +66,7 @@ form_position_map = {
     'R': 'reg2',
     'U': 'reg2', # %xmm
     'V': 'reg', # %xmm
+    'E': 'rm',
     'W': 'rm', # %xmm
     'M': 'mem',
     }
@@ -756,6 +757,17 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
 
   # Two-byte opcodes.
 
+  if not nacl_mode:
+    Add('0f 05', 'syscall', [])
+    Add('0f 06', 'clts', [])
+    Add('0f 07', 'sysret', [])
+    Add('0f 08', 'invd', [])
+    Add('0f 09', 'wbinvd', [])
+    Add('0f 0b', 'ud2', [])
+  # TODO: 0f 0d (prefetch)
+  Add('0f 0e', 'femms', [])
+  # TODO: 0f 0f (3DNow)
+
   Add('0f 10', 'movups', [('reg', 'xmm'), ('rm', 'xmm')])
   Add('0f 11', 'movups', [('rm', 'xmm'), ('reg', 'xmm')])
   Add('0f 12', 'movlps', [('reg', 'xmm'), ('mem', 64)])
@@ -786,6 +798,37 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   Add('f2 0f 12', 'movddup', [('reg', 'xmm'), ('rm', 'xmm64')])
 
   # Skip 0f 2x ('mov' on control registers)
+  AddForm('0f 28', 'movaps', 'Vps Wps')
+  AddForm('0f 29', 'movaps', 'Wps Vps')
+  AddForm('66 0f 28', 'movapd', 'Vpd Wpd')
+  AddForm('66 0f 29', 'movapd', 'Wpd Vpd')
+  AddForm('0f 2a', 'cvtpi2ps', 'Vps Qq')
+  AddForm('f3 0f 2a', 'cvtsi2ss', 'Vss Ed') # Ed/q
+  AddForm('66 0f 2a', 'cvtpi2pd', 'Vpd Qq')
+  AddForm('f2 0f 2a', 'cvtsi2sd', 'Vsd Ed') # Ed/q
+  AddForm('0f 2b', 'movntps', 'Mdq Vps')
+  AddForm('f3 0f 2b', 'movntss', 'Md Vss')
+  AddForm('66 0f 2b', 'movntpd', 'Mdq Vpd')
+  AddForm('f2 0f 2b', 'movntsd', 'Mq Vsd')
+  # binutils correctly disassembles 'cvttps2pi' with 'QWORD PTR', but
+  # the assembler wrongly only accepts 'XMMWORD PTR'.
+  # The AMD manual has 'Pq Wps' for 'cvttps2pi', but 'W' is wrong (it
+  # should be an MMX register, not an XMM register) and 'ps' is wrong
+  # (it should be 64-bit, not 128-bit).
+  Add('0f 2c', 'FIXME cvttps2pi', [('reg', 'mmx'), ('rm', 'xmm64')])
+  AddForm('f3 0f 2c', 'cvttss2si', 'Gd Wss') # Gd/q
+  AddForm('66 0f 2c', 'cvttpd2pi', 'Pq Wpd')
+  AddForm('f2 0f 2c', 'cvttsd2si', 'Gd Wsd') # Gd/q
+  Add('0f 2d', 'cvtps2pi', [('reg', 'mmx'), ('rm', 'xmm64')])
+  AddForm('f3 0f 2d', 'cvtss2si', 'Gd Wss') # Gd/q
+  AddForm('66 0f 2d', 'cvtpd2pi', 'Pq Wpd')
+  AddForm('f2 0f 2d', 'cvtsd2si', 'Gd Wsd') # Gd/q
+  AddForm('0f 2e', 'ucomiss', 'Vss Wss')
+  AddForm('66 0f 2e', 'ucomisd', 'Vsd Wsd')
+  # The AMD manual uses 'Vps Wps', but 'ps' is not correct because
+  # this writes to a 32-bit memory location.
+  Add('0f 2f', 'comiss', [('reg', 'xmm'), ('rm', 'xmm32')])
+  AddForm('66 0f 2f', 'comisd', 'Vpd Wsd')
 
   Add('0f 31', 'rdtsc', [])
   if not nacl_mode:
