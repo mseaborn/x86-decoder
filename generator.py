@@ -70,7 +70,7 @@ form_position_map = {
 form_size_map = {
     'd': 32,
     'dq': 'xmm',   # XMMWORD
-    'pd': 'xmm64', # QWORD
+    'pd': 'xmm',   # XMMWORD
     'ps': 'xmm',   # XMMWORD
     'sd': 'xmm64', # QWORD
     'ss': 'xmm32', # DWORD
@@ -800,12 +800,11 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('f3 0f 52', 'rsqrtss', 'Vss Wss')
   AddForm('f3 0f 53', 'rcpss', 'Vss Wss')
   AddForm('66 0f 50', 'movmskpd', 'Gd Upd')
-  # The AMD manual says 'Vpd Wpd' for these, but it doesn't match objdump.
-  AddForm('66 0f 51', 'sqrtpd', 'Vpd Wps')
-  AddForm('66 0f 54', 'andpd', 'Vpd Wps')
-  AddForm('66 0f 55', 'andnpd', 'Vpd Wps')
-  AddForm('66 0f 56', 'orpd', 'Vpd Wps')
-  AddForm('66 0f 57', 'xorpd', 'Vpd Wps')
+  AddForm('66 0f 51', 'sqrtpd', 'Vpd Wpd')
+  AddForm('66 0f 54', 'andpd', 'Vpd Wpd')
+  AddForm('66 0f 55', 'andnpd', 'Vpd Wpd')
+  AddForm('66 0f 56', 'orpd', 'Vpd Wpd')
+  AddForm('66 0f 57', 'xorpd', 'Vpd Wpd')
   AddForm('f2 0f 51', 'sqrtsd', 'Vsd Wsd')
 
   # MMX
@@ -884,6 +883,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   # Added in the 486.
   AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
   AddPair2('0f', 0xc0, 'xadd', ['rm', 'reg'])
+  # Group 9
   Add('0f c7', 'cmpxchg8b', [('mem', 64)], modrm_opcode=1)
   for reg_num in range(8):
     # bswap is undefined when used with the data16 prefix (because
@@ -893,8 +893,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
 
   AddForm('0f c2', 'cmpps', 'Vps Wps Ib')
   AddForm('f3 0f c2', 'cmpss', 'Vss Wss Ib')
-  # AMD manual says 'Wpd' but the disassembler uses XMMWORD not QWORD.
-  AddForm('66 0f c2', 'cmppd', 'Vpd Wdq Ib')
+  AddForm('66 0f c2', 'cmppd', 'Vpd Wpd Ib')
   AddForm('f2 0f c2', 'cmpsd', 'Vsd Wsd Ib')
   # binutils incorrectly disassembles 'movnti' with 'QWORD PTR', even
   # though the assembler only accepts 'DWORD PTR'.
@@ -908,7 +907,21 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   Add('66 0f c4', 'pinsrw', [('reg', 'xmm'), ('reg2', 32), ('imm', 8)])
   Add('0f c5', 'pextrw', [('reg', 32), ('reg2', 'mmx'), ('imm', 8)])
   Add('66 0f c5', 'pextrw', [('reg', 32), ('reg2', 'xmm'), ('imm', 8)])
-  # TODO: 0f c6/c7
+  AddForm('0f c6', 'shufps', 'Vps Wps Ib')
+  AddForm('66 0f c6', 'shufpd', 'Vpd Wpd Ib')
+
+  AddForm('66 0f d0', 'addsubpd', 'Vpd Wpd')
+  AddForm('f2 0f d0', 'addsubps', 'Vps Wps')
+  AddForm('0f d1', 'psrlw', 'Pq Qq')
+  AddForm('0f d2', 'psrld', 'Pq Qq')
+  AddForm('0f d3', 'psrlq', 'Pq Qq')
+  AddForm('0f d4', 'paddq', 'Pq Qq')
+  AddForm('0f d5', 'pmullw', 'Pq Qq')
+  AddForm('66 0f d1', 'psrlw', 'Vdq Wdq')
+  AddForm('66 0f d2', 'psrld', 'Vdq Wdq')
+  AddForm('66 0f d3', 'psrlq', 'Vdq Wdq')
+  AddForm('66 0f d4', 'paddq', 'Vdq Wdq')
+  AddForm('66 0f d5', 'pmullw', 'Vdq Wdq')
 
   # SSE
   Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
