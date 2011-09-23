@@ -599,13 +599,14 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     Add(prefix + ' ' + Byte(opcode), instr, SubstSize(format, 8), **kwargs)
     AddLW2(prefix + ' ' + Byte(opcode + 1), instr, format, **kwargs)
 
-  def AddForm(bytes, instr_name, format):
+  def AddForm(bytes, instr_name, format, modrm_opcode=None):
     def MapArg(arg):
       if arg in form_map:
         return form_map[arg]
       else:
         return (form_position_map[arg[0]], form_size_map[arg[1:]])
-    Add(bytes, instr_name, map(MapArg, format.split()))
+    Add(bytes, instr_name, map(MapArg, format.split()),
+        modrm_opcode=modrm_opcode)
 
   def AddSSEMMXPair(opcode, name):
     AddForm(opcode, name, 'Pq Qq')
@@ -619,6 +620,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
                                          ['*ax', 'imm']]):
       opcode = CatBits([arith_opcode, format_num, 0], [5, 2, 1])
       AddPair(opcode, instr, format)
+    # Group 1
     AddPair(0x80, instr, ['rm', 'imm'], modrm_opcode=arith_opcode)
     # 0x82 is a hole in the table.  We don't use AddPair(0x82) here
     # because 0x80 and 0x82 would be equivalent (both 8-bit ops with
@@ -661,6 +663,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddPair(0x84, 'test', ['rm', 'reg'])
   AddPair(0x86, 'xchg', ['rm', 'reg'])
   AddLW(0x8d, 'lea', ['reg', 'lea_mem'])
+  # Group 1a just contains 'pop'.
   AddLW(0x8f, 'pop', ['rm'], modrm_opcode=0)
 
   # 'nop' is really 'xchg %eax, %eax'.
@@ -771,7 +774,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
 
   AddPair(0x88, 'mov', ['rm', 'reg'])
   AddPair(0x8a, 'mov', ['reg', 'rm'])
-  AddPair(0xc6, 'mov', ['rm', 'imm'], modrm_opcode=0)
+  AddPair(0xc6, 'mov', ['rm', 'imm'], modrm_opcode=0) # Group 11
   AddPair(0xa0, 'mov', ['*ax', 'addr'])
   AddPair(0xa2, 'mov', ['addr', '*ax'])
   for reg_num in range(8):
@@ -963,6 +966,27 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('0f 7f', 'movq', 'Qq Pq')
   AddForm('f3 0f 7f', 'movdqu', 'Wdq Vdq')
   AddForm('66 0f 7f', 'movdqa', 'Wdq Vdq')
+  # Group 12
+  AddForm('0f 71', 'psrlw', 'Nq Ib', modrm_opcode=2)
+  AddForm('0f 71', 'psraw', 'Nq Ib', modrm_opcode=4)
+  AddForm('0f 71', 'psllw', 'Nq Ib', modrm_opcode=6)
+  AddForm('66 0f 71', 'psrlw', 'Udq Ib', modrm_opcode=2)
+  AddForm('66 0f 71', 'psraw', 'Udq Ib', modrm_opcode=4)
+  AddForm('66 0f 71', 'psllw', 'Udq Ib', modrm_opcode=6)
+  # Group 13
+  AddForm('0f 72', 'psrld', 'Nq Ib', modrm_opcode=2)
+  AddForm('0f 72', 'psrad', 'Nq Ib', modrm_opcode=4)
+  AddForm('0f 72', 'pslld', 'Nq Ib', modrm_opcode=6)
+  AddForm('66 0f 72', 'psrld', 'Udq Ib', modrm_opcode=2)
+  AddForm('66 0f 72', 'psrad', 'Udq Ib', modrm_opcode=4)
+  AddForm('66 0f 72', 'pslld', 'Udq Ib', modrm_opcode=6)
+  # Group 14
+  AddForm('0f 73', 'psrlq', 'Nq Ib', modrm_opcode=2)
+  AddForm('0f 73', 'psllq', 'Nq Ib', modrm_opcode=6)
+  AddForm('66 0f 73', 'psrlq', 'Udq Ib', modrm_opcode=2)
+  AddForm('66 0f 73', 'psrldq', 'Udq Ib', modrm_opcode=3)
+  AddForm('66 0f 73', 'psllq', 'Udq Ib', modrm_opcode=6)
+  AddForm('66 0f 73', 'pslldq', 'Udq Ib', modrm_opcode=7)
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
@@ -1018,7 +1042,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   # Added in the 486.
   AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
   AddPair2('0f', 0xc0, 'xadd', ['rm', 'reg'])
-  # Group 9
+  # Group 9 just contains cmpxchg.
   Add('0f c7', 'cmpxchg8b', [('mem', 64)], modrm_opcode=1)
   for reg_num in range(8):
     # bswap is undefined when used with the data16 prefix (because
