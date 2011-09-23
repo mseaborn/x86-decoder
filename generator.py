@@ -44,6 +44,7 @@ mem_sizes = {
   'lea_mem': '',
   80: 'TBYTE PTR ',
   'other_x87_size': '',
+  'fxsave_size': '',
   'lddqu_size': '', # Should be XMMWORD, but objdump omits this.
   }
 
@@ -790,9 +791,12 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     Add('0f 08', 'invd', [])
     Add('0f 09', 'wbinvd', [])
     Add('0f 0b', 'ud2', [])
-  # TODO: 0f 0d (prefetch)
   Add('0f 0e', 'femms', [])
   # TODO: 0f 0f (3DNow)
+  # Group P: prefetches
+  # TODO: Other modrm_opcode values for prefetches might be allowed.
+  Add('0f 0d', 'prefetch', [('mem', 8)], modrm_opcode=0)
+  Add('0f 0d', 'prefetchw', [('mem', 8)], modrm_opcode=1)
 
   Add('0f 10', 'movups', [('reg', 'xmm'), ('rm', 'xmm')])
   Add('0f 11', 'movups', [('rm', 'xmm'), ('reg', 'xmm')])
@@ -804,6 +808,11 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   Add('0f 16', 'movhps', [('reg', 'xmm'), ('mem', 64)])
   Add('0f 16', 'movlhps', [('reg', 'xmm'), ('reg2', 'xmm')])
   Add('0f 17', 'movhps', [('mem', 64), ('reg', 'xmm')])
+  # Group 16
+  Add('0f 18', 'prefetchnta', [('mem', 8)], modrm_opcode=0)
+  Add('0f 18', 'prefetcht0', [('mem', 8)], modrm_opcode=1)
+  Add('0f 18', 'prefetcht1', [('mem', 8)], modrm_opcode=2)
+  Add('0f 18', 'prefetcht2', [('mem', 8)], modrm_opcode=3)
 
   Add('f3 0f 10', 'movss', [('reg', 'xmm'), ('rm', 'xmm32')])
   Add('f3 0f 11', 'movss', [('rm', 'xmm32'), ('reg', 'xmm')])
@@ -987,6 +996,12 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddForm('66 0f 73', 'psrldq', 'Udq Ib', modrm_opcode=3)
   AddForm('66 0f 73', 'psllq', 'Udq Ib', modrm_opcode=6)
   AddForm('66 0f 73', 'pslldq', 'Udq Ib', modrm_opcode=7)
+  # Group 17
+  if not nacl_mode:
+    # The AMD manual says 'Vdq' (reg), but it should be 'Udq' (reg2).
+    # This form of extrq is disallowed.
+    # See http://code.google.com/p/nativeclient/issues/detail?id=1970
+    AddForm('66 0f 78', 'extrq', 'Udq Ib Ib', modrm_opcode=0)
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
@@ -1129,8 +1144,20 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddSSEMMXPair('0f fe', 'paddd')
 
   # SSE
+  # Group 15
+  if not nacl_mode:
+    Add('0f ae', 'fxsave', [('mem', 'fxsave_size')], modrm_opcode=0)
+    Add('0f ae', 'fxrstor', [('mem', 'fxsave_size')], modrm_opcode=1)
   Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
   Add('0f ae', 'stmxcsr', [('mem', 32)], modrm_opcode=3)
+  # TODO: The AMD manual permits 8 different encodings of each of
+  # these three instructions (with any value of the 3-bit RM field).
+  # The original x86-32 validator allows all of these.  However,
+  # objdump refuses to decode all but the RM==0 encodings.
+  Add('0f ae e8', 'lfence', []) # modrm_opcode=5
+  Add('0f ae f0', 'mfence', []) # modrm_opcode=6
+  Add('0f ae f8', 'sfence', []) # modrm_opcode=7
+  Add('0f ae', 'clflush', [('mem', 8)], modrm_opcode=7)
 
   # x87 floating point instructions.
 
