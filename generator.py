@@ -791,6 +791,17 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     Add('0f 08', 'invd', [])
     Add('0f 09', 'wbinvd', [])
     Add('0f 0b', 'ud2', [])
+    Add('0f 01 d8', 'vmrun', [])
+    Add('0f 01 d9', 'vmmcall', [])
+    Add('0f 01 da', 'vmload', [])
+    Add('0f 01 db', 'vmsave', [])
+    Add('0f 01 dc', 'stgi', [])
+    Add('0f 01 dd', 'clgi', [])
+    Add('0f 01 de', 'skinit', [])
+    Add('0f 01 df', 'invlpga', [])
+    # 'swapgs' is 64-bit-only.
+    # Add('0f 01 f8', 'swapgs', [])
+    Add('0f 01 f9', 'rdtscp', [])
   Add('0f 0e', 'femms', [])
   # TODO: 0f 0f (3DNow)
   # Group P: prefetches
