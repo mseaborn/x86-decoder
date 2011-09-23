@@ -692,6 +692,24 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   Add('9f', 'lahf', [])
   Add('f4', 'hlt', [])
 
+  if not nacl_mode:
+    Add('27', 'daa', [])
+    Add('2f', 'das', [])
+    Add('37', 'aaa', [])
+    Add('3f', 'aas', [])
+    Add('60', 'pusha', [])
+    Add('61', 'popa', [])
+    Add('9c', 'pushf', [])
+    Add('9d', 'popf', [])
+    Add('c2', 'ret', [('imm', 16)])
+    Add('c3', 'ret', [])
+    Add('cc', 'int3', [])
+    Add('cd', 'int', [('imm', 8)])
+    Add('ce', 'into', [])
+    Add('cf', 'iret', [])
+    Add('fa', 'cli', [])
+    Add('fb', 'sti', [])
+
   Add('c9', 'leave', [])
   # 'data16 leave' is probably never useful, but we allow it for
   # consistency with the original NaCl x86-32 validator.
@@ -717,6 +735,9 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddPair(0xa8, 'test', ['*ax', 'imm'])
 
   if not nacl_mode:
+    Add('e0', 'loopne', [('jump_dest', 8)])
+    Add('e1', 'loope', [('jump_dest', 8)])
+    Add('e2', 'loop', [('jump_dest', 8)])
     Add('e3', 'jecxz', [('jump_dest', 8)])
   AddLW(0xe9, 'jmp', ['jump_dest'])
   Add('eb', 'jmp', [('jump_dest', 8)])
@@ -948,6 +969,10 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     AddLW2('0f ' + Byte(0x40 + cond_num), 'cmov' + cond_name, ['reg', 'rm'])
     # 4-byte offset jumps.
     Add('0f ' + Byte(0x80 + cond_num), 'j' + cond_name, [('jump_dest', 32)])
+    # 2-byte offset jumps.
+    if not nacl_mode:
+      Add('66 0f ' + Byte(0x80 + cond_num), 'j' + cond_name,
+          [('jump_dest', 16)])
     # Byte set on condition
     Add('0f ' + Byte(0x90 + cond_num), 'set' + cond_name, [('rm', 8)],
         modrm_opcode=0)
