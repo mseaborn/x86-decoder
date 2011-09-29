@@ -17,6 +17,9 @@ def GetExamples():
       for p_data16 in [[], [0x66]]:
         for p_rep in [[], [0xf2], [0xf3]]:
           yield p_data16 + p_rep + p_twobyte + [byte]
+  # Attempt to enumerate possible AMD 3DNow instructions.
+  for byte in xrange(256):
+    yield [0x0f, 0x0f, 0xff, byte]
 
 
 # Returns whether the prefix sequence "bytes" appears in the trie
