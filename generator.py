@@ -325,9 +325,8 @@ def ImmediateNode(immediate_size):
 
 
 @Memoize
-def ModRMNode(reg_size, rm_size, rm_allow_reg, rm_allow_mem, immediate_size):
-  nodes = list(ModRM(reg_size, rm_size, rm_allow_reg, rm_allow_mem,
-                     ImmediateNode(immediate_size)))
+def ModRMNode(reg_size, rm_size, rm_allow_reg, rm_allow_mem, tail):
+  nodes = list(ModRM(reg_size, rm_size, rm_allow_reg, rm_allow_mem, tail))
   node = MergeMany(nodes, NoMerge)
   return TrieNode(dict((key, DftLabel('test_keep', key == '00' or key == 'ff',
                                       value))
@@ -545,7 +544,7 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
       node = ModRMNode(reg_size, rm_size, rm_allow_reg, rm_allow_mem,
-                       immediate_size)
+                       ImmediateNode(immediate_size))
       if not (rm_allow_reg and rm_allow_mem):
         node = PushLabels(labels, node)
         labels = []
@@ -564,6 +563,23 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
     if data16:
       node = TrieOfList(['66'], node)
     top_nodes.append(node)
+
+  def Add3DNow(instrs):
+    # AMD 3DNow instructions are treated specially because the 3DNow
+    # opcode is placed at the end of the instruction, in the position
+    # where immediate values are normally placed.
+    if lockable_only:
+      return
+    if nacl_mode and gs_access_only:
+      return
+    node = TrieNode(dict((Byte(imm_opcode),
+                          DftLabel('instr_name', name, trie.AcceptNode))
+                         for imm_opcode, name in instrs))
+    rm_allow_reg = not mem_access_only
+    rm_allow_mem = True
+    node = DftLabel('args', [(True, 'reg'), (True, 'rm')],
+                    ModRMNode('mmx', 'mmx64', rm_allow_reg, rm_allow_mem, node))
+    top_nodes.append(TrieOfList(['0f', '0f'], node))
 
   def AddFPMem(bytes, instr_name, modrm_opcode, size=32):
     Add(bytes, instr_name, [('mem', size)], modrm_opcode=modrm_opcode)
@@ -1317,6 +1333,33 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   AddFPReg('df', 'fucomip', modrm_opcode=5)
   AddFPReg('df', 'fcomip', modrm_opcode=6)
   # skip 7
+
+  Add3DNow([
+      (0x90, 'pfcmpge'),
+      (0xa0, 'pfcmpgt'),
+      (0xb0, 'pfcmpeq'),
+      (0x94, 'pfmin'),
+      (0xa4, 'pfmax'),
+      (0xb4, 'pfmul'),
+      (0x96, 'pfrcp'),
+      (0xa6, 'pfrcpit1'),
+      (0xb6, 'pfrcpit2'),
+      (0x97, 'pfrsqrt'),
+      (0xa7, 'pfrsqit1'),
+      (0xb7, 'pmulhrw'),
+      (0x0c, 'pi2fw'),
+      (0x1c, 'pf2iw'),
+      (0x0d, 'pi2fd'),
+      (0x1d, 'pf2id'),
+      (0x8a, 'pfnacc'),
+      (0x9a, 'pfsub'),
+      (0xaa, 'pfsubr'),
+      (0xbb, 'pswapd'),
+      (0x8e, 'pfpnacc'),
+      (0x9e, 'pfadd'),
+      (0xae, 'pfacc'),
+      (0xbf, 'pavgusb'),
+      ])
 
   Log('Merge...')
   return MergeMany(top_nodes, NoMerge)
