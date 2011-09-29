@@ -11,7 +11,7 @@ bits = 32
 
 
 def GetInstructions():
-  root = generator.GetRoot()
+  root = generator.GetRoot(nacl_mode=True)
   root = generator.FilterModRM(root)
   for bytes, label_map in generator.FlattenTrie(root):
     label_map['align_to_end'] = (label_map['instr_name'] == 'call')

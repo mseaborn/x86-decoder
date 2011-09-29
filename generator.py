@@ -434,11 +434,7 @@ lock_whitelist = set([
     'xadd', 'xchg', 'xor'])
 
 
-# TODO: Make this into a function argument.
-nacl_mode = True
-
-
-def GetCoreRoot(mem_access_only=False, lockable_only=False,
+def GetCoreRoot(nacl_mode, mem_access_only=False, lockable_only=False,
                 gs_access_only=False):
   top_nodes = []
 
@@ -1365,16 +1361,18 @@ def GetCoreRoot(mem_access_only=False, lockable_only=False,
   return MergeMany(top_nodes, NoMerge)
 
 
-def GetRoot():
+def GetRoot(nacl_mode):
   Log('Core instructions...')
-  core = GetCoreRoot()
+  core = GetCoreRoot(nacl_mode=nacl_mode)
   Log('Memory access instructions...')
   mem = TrieOfList(['65'], DftLabel('gs_prefix', None,
-                                    GetCoreRoot(mem_access_only=True,
+                                    GetCoreRoot(nacl_mode=nacl_mode,
+                                                mem_access_only=True,
                                                 gs_access_only=True)))
   Log('Locked instructions...')
   lock = TrieOfList(['f0'], DftLabel('lock_prefix', None,
-                                     GetCoreRoot(mem_access_only=True,
+                                     GetCoreRoot(nacl_mode=nacl_mode,
+                                                 mem_access_only=True,
                                                  lockable_only=True)))
   Log('Merge...')
   return MergeMany([core, mem, lock], NoMerge)
@@ -1435,7 +1433,7 @@ def MergeAcceptTypes(accept_types):
 
 def Main():
   Log('Building trie...')
-  trie_root = GetRoot()
+  trie_root = GetRoot(nacl_mode=True)
   Log('Size:')
   Log(TrieSize(trie_root, False))
   Log('Node count:')
