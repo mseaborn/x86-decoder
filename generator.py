@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import subprocess
 import time
 
 from memoize import Memoize
@@ -257,7 +256,7 @@ def MergeMany(nodes, merge_accept_types):
   if len(nodes) == 1:
     return list(nodes)[0]
   if len(nodes) == 0:
-    return EmptyNode
+    return trie.EmptyNode
   children = {}
   accept_types = set()
 
