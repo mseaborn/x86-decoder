@@ -15,7 +15,7 @@ def MapWildcard(byte):
 
 
 # The assembler does not accept the %eiz syntax for non-canonical encodings.
-eiz_regexp = re.compile(r'eiz\*[1248]')
+eiz_regexp = re.compile(r'(eiz|riz)\*[1248]')
 
 
 def FillOutValues(desc):
@@ -63,6 +63,7 @@ def DisassembleTestCallback(get_instructions, bits):
 
 
 whitespace_regexp = re.compile('\s+')
+comment_regexp = re.compile('\s+#.*$')
 jump_regexp = re.compile(
     '^(jn?[a-z]{1,2}|call|jmp[lw]?|je?cxz|loop(e|ne)?) 0x[0-9a-f]+$')
 
@@ -70,6 +71,8 @@ jump_regexp = re.compile(
 def NormaliseObjdumpDisasm(disasm):
   # Canonicalise whitespace.
   disasm = whitespace_regexp.sub(' ', disasm)
+  # Remove comments.  These annotate %rip-relative addressing.
+  disasm = comment_regexp.sub('', disasm)
   # Canonicalise jump targets.
   disasm = jump_regexp.sub('\\1 JUMP_DEST', disasm)
   disasm = (disasm
