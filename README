@@ -80,6 +80,15 @@ displacements to be overwritten.  It should be easy to implement this
 by annotating each accepting DFA state with the number of wildcard
 bytes the instruction encoding ends with.
 
+* Implement CPUID-based checking.  The existing validators can stub
+out instructions (that is, replace them with HLTs) if they're not
+supported by the CPU.
+
+* Allow non-canonical orderings of prefix bytes.  For example, the
+existing x86 validators allows DATA16 and LOCK in either order.
+See http://code.google.com/p/nativeclient/issues/detail?id=2518.
+However, it is simpler to allow only one ordering.
+
 * Fix any cases where we disallow instructions that the original
 validator allows.  Check for any remaining SSE, MMX or 3DNow
 instructions.
