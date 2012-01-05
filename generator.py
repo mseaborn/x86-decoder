@@ -146,7 +146,7 @@ def CatBitsRev(value, sizes_in_bits):
 
 
 @Memoize
-def Sib(rex_x, mod, rm_size, disp_size, disp_str, tail):
+def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
   nodes = []
   for index_reg, index_regname in GetExtendedRegs(rex_x, regs64):
     if index_reg == 4:
@@ -156,7 +156,7 @@ def Sib(rex_x, mod, rm_size, disp_size, disp_str, tail):
     for scale in (0, 1, 2, 3):
       # 5 is a special case and is not always %ebp.
       # %esi/%edi are missing from headings in table in doc.
-      for base_reg, base_regname in enumerate(regs64[:8]):
+      for base_reg, base_regname in GetExtendedRegs(rex_b, regs64):
         if index_regname == 'riz' and base_regname == 'rsp' and scale == 0:
           index_result = ''
         else:
@@ -186,7 +186,7 @@ def FormatMemAccess(size, parts):
 
 
 @Memoize
-def ModRMMem(rex_x, rm_size, tail):
+def ModRMMem(rex_x, rex_b, rm_size, tail):
   got = []
   got.append((0, 5, TrieOfList(['XX'] * 4,
                                DftLabel('rm_arg',
@@ -195,7 +195,7 @@ def ModRMMem(rex_x, rm_size, tail):
   for mod, dispsize, disp_str in ((0, 0, ''),
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
-    for reg2, regname2 in enumerate(regs64[:8]):
+    for reg2, regname2 in GetExtendedRegs(rex_b, regs64):
       if reg2 == 4:
         # %esp is not accepted in this position.
         # 4 is a special value: adds SIB byte.
@@ -209,32 +209,33 @@ def ModRMMem(rex_x, rm_size, tail):
                                                       [regname2, disp_str]),
                                       tail))))
     reg2 = 4
-    got.append((mod, reg2, Sib(rex_x, mod, rm_size, dispsize, disp_str, tail)))
+    got.append((mod, reg2, Sib(rex_x, rex_b, mod, rm_size,
+                               dispsize, disp_str, tail)))
   return got
 
 
 @Memoize
-def ModRMReg(has_rex, rm_size, tail):
+def ModRMReg(has_rex, rex_b, rm_size, tail):
   got = []
   mod = 3
-  for reg2, regname2 in enumerate(RegsBySize(has_rex, rm_size)[:8]):
+  for reg2, regname2 in GetExtendedRegs(rex_b, RegsBySize(has_rex, rm_size)):
     got.append((mod, reg2, DftLabel('rm_arg', regname2, tail)))
   return got
 
 
-def ModRM1(has_rex, rex_x, rm_size, rm_allow_reg, rm_allow_mem, tail):
+def ModRM1(has_rex, rex_x, rex_b, rm_size, rm_allow_reg, rm_allow_mem, tail):
   if rm_allow_mem:
-    for result in ModRMMem(rex_x, rm_size, tail):
+    for result in ModRMMem(rex_x, rex_b, rm_size, tail):
       yield result
   if rm_allow_reg:
-    for result in ModRMReg(has_rex, rm_size, tail):
+    for result in ModRMReg(has_rex, rex_b, rm_size, tail):
       yield result
 
 
-def ModRM(has_rex, rex_r, rex_x, reg_size, rm_size,
+def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
           rm_allow_reg, rm_allow_mem, tail):
   for reg, regname in GetExtendedRegs(rex_r, RegsBySize(has_rex, reg_size)):
-    for mod, reg2, node in ModRM1(has_rex, rex_x, rm_size,
+    for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
                                   rm_allow_reg, rm_allow_mem, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
                        DftLabel('reg_arg', regname, node))
@@ -243,10 +244,10 @@ def ModRM(has_rex, rex_r, rex_x, reg_size, rm_size,
 # Although the node this function returns won't get reused, the child
 # nodes do get reused, which makes this worth memoizing.
 @Memoize
-def ModRMSingleArg(has_rex, rex_x, rm_size,
+def ModRMSingleArg(has_rex, rex_x, rex_b, rm_size,
                    rm_allow_reg, rm_allow_mem, opcode, tail):
   nodes = []
-  for mod, reg2, node in ModRM1(has_rex, rex_x, rm_size,
+  for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
                                 rm_allow_reg, rm_allow_mem, tail):
     test_keep = (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
     nodes.append(TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)],
@@ -356,9 +357,9 @@ def ImmediateNode(immediate_size):
 
 
 @Memoize
-def ModRMNode(has_rex, rex_r, rex_x, reg_size, rm_size,
+def ModRMNode(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
               rm_allow_reg, rm_allow_mem, tail):
-  nodes = list(ModRM(has_rex, rex_r, rex_x, reg_size, rm_size,
+  nodes = list(ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
                      rm_allow_reg, rm_allow_mem, tail))
   node = MergeMany(nodes, NoMerge)
   return TrieNode(dict((key, DftLabel('test_keep', key == '00' or key == 'ff',
@@ -476,19 +477,21 @@ def SplitPrefixes(bytes):
 
 def GetRexRoot(**kwargs):
   nodes = []
-  for bytes, node in GetCoreRoot(has_rex=0, rex_r=0, rex_x=0, **kwargs):
+  for bytes, node in GetCoreRoot(has_rex=0, rex_r=0, rex_x=0, rex_b=0,
+                                 **kwargs):
     nodes.append(TrieOfList(bytes, node))
   for rex_r in (0, 1):
     for rex_x in (0, 1):
-      for bytes, node in GetCoreRoot(has_rex=1, rex_r=rex_r, rex_x=rex_x,
-                                     **kwargs):
-        prefixes, bytes = SplitPrefixes(bytes)
-        rex = 0x40 | (rex_r << 2) | (rex_x << 1)
-        nodes.append(TrieOfList(prefixes + [Byte(rex)] + bytes, node))
+      for rex_b in (0, 1):
+        for bytes, node in GetCoreRoot(has_rex=1, rex_r=rex_r, rex_x=rex_x,
+                                       rex_b=rex_b, **kwargs):
+          prefixes, bytes = SplitPrefixes(bytes)
+          rex = 0x40 | (rex_r << 2) | (rex_x << 1) | rex_b
+          nodes.append(TrieOfList(prefixes + [Byte(rex)] + bytes, node))
   return MergeMany(nodes, NoMerge)
 
 
-def GetCoreRoot(has_rex, rex_r, rex_x, nacl_mode, mem_access_only=False,
+def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
                 lockable_only=False, gs_access_only=False):
   top_nodes = []
 
@@ -577,7 +580,7 @@ def GetCoreRoot(has_rex, rex_r, rex_x, nacl_mode, mem_access_only=False,
       elif kind in ('1', 'cl', 'st'):
         SimpleArg(kind)
       elif isinstance(kind, tuple) and len(kind) == 2 and kind[0] == 'fixreg':
-        SimpleArg(RegsBySize(has_rex, size)[kind[1]])
+        SimpleArg(RegsBySize(has_rex, size)[kind[1] + (rex_b << 3)])
       elif kind in ('es:[edi]', 'ds:[esi]'):
         SimpleArg(mem_sizes[size] + kind)
         # Although this accesses memory, we don't set 'mem_access = True'
@@ -593,7 +596,7 @@ def GetCoreRoot(has_rex, rex_r, rex_x, nacl_mode, mem_access_only=False,
 
     if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
-      node = ModRMNode(has_rex, rex_r, rex_x, reg_size, rm_size,
+      node = ModRMNode(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
                        rm_allow_reg, rm_allow_mem,
                        ImmediateNode(immediate_size))
       if not (rm_allow_reg and rm_allow_mem):
@@ -601,7 +604,8 @@ def GetCoreRoot(has_rex, rex_r, rex_x, nacl_mode, mem_access_only=False,
         labels = []
     elif rm_size is not None and reg_size is None:
       assert modrm_opcode is not None
-      node = ModRMSingleArg(has_rex, rex_x, rm_size, rm_allow_reg, rm_allow_mem,
+      node = ModRMSingleArg(has_rex, rex_x, rex_b, rm_size,
+                            rm_allow_reg, rm_allow_mem,
                             modrm_opcode, ImmediateNode(immediate_size))
       node = PushLabels(labels, node)
       labels = []

@@ -66,7 +66,7 @@ whitespace_regexp = re.compile('\s+')
 comment_regexp = re.compile('\s+#.*$')
 jump_regexp = re.compile(
     '^(jn?[a-z]{1,2}|call|jmp[lw]?|je?cxz|loop(e|ne)?) 0x[0-9a-f]+$')
-rex_regexp = re.compile(r'rex(\.R?X?)? ')
+rex_regexp = re.compile(r'rex(\.R?X?B?)? ')
 
 
 def NormaliseObjdumpDisasm(disasm):
