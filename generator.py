@@ -31,6 +31,12 @@ regs8_original = ('al', 'cl', 'dl', 'bl', 'ah', 'ch', 'dh', 'bh')
 regs8_extended = ('al', 'cl', 'dl', 'bl', 'spl', 'bpl', 'sil', 'dil',
                   'r8b', 'r9b', 'r10b', 'r11b', 'r12b', 'r13b', 'r14b', 'r15b')
 
+nacl_unwritable_reg = (
+    'r15', 'r15d', 'r15w', 'r15b',
+    'rsp', 'esp', 'sp', 'spl',
+    'rbp', 'ebp', 'bp', 'bpl',
+    )
+
 regs_by_size = {
   32: regs32,
   16: regs16,
@@ -226,6 +232,9 @@ def ModRMReg(has_rex, rex_b, rm_size, tail):
   got = []
   mod = 3
   for reg2, regname2 in GetExtendedRegs(rex_b, RegsBySize(has_rex, rm_size)):
+    # XXX: NaCl constraint
+    if regname2 in nacl_unwritable_reg:
+      continue
     got.append((mod, reg2, DftLabel('rm_arg', regname2, tail)))
   return got
 
@@ -242,6 +251,9 @@ def ModRM1(has_rex, rex_x, rex_b, rm_size, rm_allow_reg, rm_allow_mem, tail):
 def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
           rm_allow_reg, rm_allow_mem, tail):
   for reg, regname in GetExtendedRegs(rex_r, RegsBySize(has_rex, reg_size)):
+    # XXX: NaCl constraint
+    if regname in nacl_unwritable_reg:
+      continue
     for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
                                   rm_allow_reg, rm_allow_mem, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
@@ -588,7 +600,11 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
       elif kind in ('1', 'cl', 'st'):
         SimpleArg(kind)
       elif isinstance(kind, tuple) and len(kind) == 2 and kind[0] == 'fixreg':
-        SimpleArg(RegsBySize(has_rex, size)[kind[1] + (rex_b << 3)])
+        regname = RegsBySize(has_rex, size)[kind[1] + (rex_b << 3)]
+        # XXX: NaCl constraint
+        if regname in nacl_unwritable_reg:
+          return
+        SimpleArg(regname)
       elif kind in ('es:[edi]', 'ds:[esi]'):
         SimpleArg(mem_sizes[size] + kind)
         # Although this accesses memory, we don't set 'mem_access = True'
@@ -1491,12 +1507,16 @@ def SandboxedJumps():
     # for top-bit-clear registers, but we don't.
 
     # Top-bit-set registers.
-    mask = [0x41, 0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
-            0x4d, 0x01, 0xf8 | reg]  # add %r15, %reg
-    jmp = [0x41, 0xff, 0xe0 | reg]  # jmp *%reg
-    call = [0x41, 0xff, 0xd0 | reg]  # call *%reg
-    yield TrieOfList(map(Byte, mask + jmp), tail)
-    yield TrieOfList(map(Byte, mask + call), tail)
+    # Exclude r15 since jumping using that would trash r15 and cause a
+    # jump to the bottom 4GB.
+    # Jumping using rsp or rbp is allowed but useless.
+    if reg != 7:
+      mask = [0x41, 0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
+              0x4d, 0x01, 0xf8 | reg]  # add %r15, %reg
+      jmp = [0x41, 0xff, 0xe0 | reg]  # jmp *%reg
+      call = [0x41, 0xff, 0xd0 | reg]  # call *%reg
+      yield TrieOfList(map(Byte, mask + jmp), tail)
+      yield TrieOfList(map(Byte, mask + call), tail)
 
 
 def MergeAcceptTypes(accept_types):
