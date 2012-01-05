@@ -52,6 +52,11 @@ def RegsBySize(has_rex, size):
   else:
     return regs_by_size[size]
 
+def GetExtendedRegs(top_bit, reglist):
+  assert top_bit in (0, 1)
+  for reg in xrange(8):
+    yield reg, reglist[reg + (top_bit << 3)]
+
 mem_sizes = {
   64: 'QWORD PTR ',
   32: 'DWORD PTR ',
@@ -141,9 +146,9 @@ def CatBitsRev(value, sizes_in_bits):
 
 
 @Memoize
-def Sib(mod, rm_size, disp_size, disp_str, tail):
+def Sib(rex_x, mod, rm_size, disp_size, disp_str, tail):
   nodes = []
-  for index_reg, index_regname in enumerate(regs64[:8]):
+  for index_reg, index_regname in GetExtendedRegs(rex_x, regs64):
     if index_reg == 4:
       # %esp is not accepted in the position '(reg, %esp)'.
       # In this context, register 4 is %eiz (an always-zero value).
@@ -181,7 +186,7 @@ def FormatMemAccess(size, parts):
 
 
 @Memoize
-def ModRMMem(rm_size, tail):
+def ModRMMem(rex_x, rm_size, tail):
   got = []
   got.append((0, 5, TrieOfList(['XX'] * 4,
                                DftLabel('rm_arg',
@@ -204,7 +209,7 @@ def ModRMMem(rm_size, tail):
                                                       [regname2, disp_str]),
                                       tail))))
     reg2 = 4
-    got.append((mod, reg2, Sib(mod, rm_size, dispsize, disp_str, tail)))
+    got.append((mod, reg2, Sib(rex_x, mod, rm_size, dispsize, disp_str, tail)))
   return got
 
 
@@ -217,20 +222,19 @@ def ModRMReg(has_rex, rm_size, tail):
   return got
 
 
-def ModRM1(has_rex, rm_size, rm_allow_reg, rm_allow_mem, tail):
+def ModRM1(has_rex, rex_x, rm_size, rm_allow_reg, rm_allow_mem, tail):
   if rm_allow_mem:
-    for result in ModRMMem(rm_size, tail):
+    for result in ModRMMem(rex_x, rm_size, tail):
       yield result
   if rm_allow_reg:
     for result in ModRMReg(has_rex, rm_size, tail):
       yield result
 
 
-def ModRM(has_rex, rex_r, reg_size, rm_size, rm_allow_reg, rm_allow_mem, tail):
-  reglist = RegsBySize(has_rex, reg_size)
-  for reg in xrange(8):
-    regname = reglist[reg + (rex_r << 3)]
-    for mod, reg2, node in ModRM1(has_rex, rm_size,
+def ModRM(has_rex, rex_r, rex_x, reg_size, rm_size,
+          rm_allow_reg, rm_allow_mem, tail):
+  for reg, regname in GetExtendedRegs(rex_r, RegsBySize(has_rex, reg_size)):
+    for mod, reg2, node in ModRM1(has_rex, rex_x, rm_size,
                                   rm_allow_reg, rm_allow_mem, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
                        DftLabel('reg_arg', regname, node))
@@ -239,9 +243,10 @@ def ModRM(has_rex, rex_r, reg_size, rm_size, rm_allow_reg, rm_allow_mem, tail):
 # Although the node this function returns won't get reused, the child
 # nodes do get reused, which makes this worth memoizing.
 @Memoize
-def ModRMSingleArg(has_rex, rm_size, rm_allow_reg, rm_allow_mem, opcode, tail):
+def ModRMSingleArg(has_rex, rex_x, rm_size,
+                   rm_allow_reg, rm_allow_mem, opcode, tail):
   nodes = []
-  for mod, reg2, node in ModRM1(has_rex, rm_size,
+  for mod, reg2, node in ModRM1(has_rex, rex_x, rm_size,
                                 rm_allow_reg, rm_allow_mem, tail):
     test_keep = (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
     nodes.append(TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)],
@@ -351,9 +356,9 @@ def ImmediateNode(immediate_size):
 
 
 @Memoize
-def ModRMNode(has_rex, rex_r, reg_size, rm_size,
+def ModRMNode(has_rex, rex_r, rex_x, reg_size, rm_size,
               rm_allow_reg, rm_allow_mem, tail):
-  nodes = list(ModRM(has_rex, rex_r, reg_size, rm_size,
+  nodes = list(ModRM(has_rex, rex_r, rex_x, reg_size, rm_size,
                      rm_allow_reg, rm_allow_mem, tail))
   node = MergeMany(nodes, NoMerge)
   return TrieNode(dict((key, DftLabel('test_keep', key == '00' or key == 'ff',
@@ -471,15 +476,19 @@ def SplitPrefixes(bytes):
 
 def GetRexRoot(**kwargs):
   nodes = []
-  for bytes, node in GetCoreRoot(has_rex=0, rex_r=0, **kwargs):
+  for bytes, node in GetCoreRoot(has_rex=0, rex_r=0, rex_x=0, **kwargs):
     nodes.append(TrieOfList(bytes, node))
-  for bytes, node in GetCoreRoot(has_rex=1, rex_r=1, **kwargs):
-    prefixes, bytes = SplitPrefixes(bytes)
-    nodes.append(TrieOfList(prefixes + [Byte(0x40 + (1 << 2))] + bytes, node))
+  for rex_r in (0, 1):
+    for rex_x in (0, 1):
+      for bytes, node in GetCoreRoot(has_rex=1, rex_r=rex_r, rex_x=rex_x,
+                                     **kwargs):
+        prefixes, bytes = SplitPrefixes(bytes)
+        rex = 0x40 | (rex_r << 2) | (rex_x << 1)
+        nodes.append(TrieOfList(prefixes + [Byte(rex)] + bytes, node))
   return MergeMany(nodes, NoMerge)
 
 
-def GetCoreRoot(has_rex, rex_r, nacl_mode, mem_access_only=False,
+def GetCoreRoot(has_rex, rex_r, rex_x, nacl_mode, mem_access_only=False,
                 lockable_only=False, gs_access_only=False):
   top_nodes = []
 
@@ -582,11 +591,9 @@ def GetCoreRoot(has_rex, rex_r, nacl_mode, mem_access_only=False,
     labels.append(('args', out_args))
     labels.append(('instr_name', instr_name))
 
-    using_rex_r = False
     if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
-      using_rex_r = True # XXX may not be accurate??
-      node = ModRMNode(has_rex, rex_r, reg_size, rm_size,
+      node = ModRMNode(has_rex, rex_r, rex_x, reg_size, rm_size,
                        rm_allow_reg, rm_allow_mem,
                        ImmediateNode(immediate_size))
       if not (rm_allow_reg and rm_allow_mem):
@@ -594,7 +601,7 @@ def GetCoreRoot(has_rex, rex_r, nacl_mode, mem_access_only=False,
         labels = []
     elif rm_size is not None and reg_size is None:
       assert modrm_opcode is not None
-      node = ModRMSingleArg(has_rex, rm_size, rm_allow_reg, rm_allow_mem,
+      node = ModRMSingleArg(has_rex, rex_x, rm_size, rm_allow_reg, rm_allow_mem,
                             modrm_opcode, ImmediateNode(immediate_size))
       node = PushLabels(labels, node)
       labels = []
@@ -603,9 +610,6 @@ def GetCoreRoot(has_rex, rex_r, nacl_mode, mem_access_only=False,
       node = ImmediateNode(immediate_size)
     else:
       raise AssertionError('Unknown type')
-    # XXX record this in an attr and filter later?
-    if rex_r != 0 and not using_rex_r:
-      return
     if data16:
       bytes = ['66'] + bytes
     top_nodes.append((bytes, DftLabels(labels, node)))

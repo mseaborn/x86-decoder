@@ -66,6 +66,7 @@ whitespace_regexp = re.compile('\s+')
 comment_regexp = re.compile('\s+#.*$')
 jump_regexp = re.compile(
     '^(jn?[a-z]{1,2}|call|jmp[lw]?|je?cxz|loop(e|ne)?) 0x[0-9a-f]+$')
+rex_regexp = re.compile(r'rex(\.R?X?)? ')
 
 
 def NormaliseObjdumpDisasm(disasm):
@@ -73,6 +74,10 @@ def NormaliseObjdumpDisasm(disasm):
   disasm = whitespace_regexp.sub(' ', disasm)
   # Remove comments.  These annotate %rip-relative addressing.
   disasm = comment_regexp.sub('', disasm)
+  # Remove prefix annotations like 'rex.RX'.  This indicates that the
+  # REX prefix has bits R and X set but the ModRM/SIB bytes don't use
+  # these bits.  The original x86 validators allow this anyway.
+  disasm = rex_regexp.sub('', disasm)
   # Canonicalise jump targets.
   disasm = jump_regexp.sub('\\1 JUMP_DEST', disasm)
   disasm = (disasm
