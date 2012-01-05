@@ -157,6 +157,9 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
       # 5 is a special case and is not always %ebp.
       # %esi/%edi are missing from headings in table in doc.
       for base_reg, base_regname in GetExtendedRegs(rex_b, regs64):
+        # XXX: NaCl constraint
+        if base_regname != 'r15':
+          continue
         if index_regname == 'riz' and base_regname == 'rsp' and scale == 0:
           index_result = ''
         else:
@@ -196,6 +199,9 @@ def ModRMMem(rex_x, rex_b, rm_size, tail):
                                   (1, 1, 'VALUE8'),
                                   (2, 4, 'VALUE32')):
     for reg2, regname2 in GetExtendedRegs(rex_b, regs64):
+      # XXX: NaCl constraint
+      if regname2 != 'r15':
+        continue
       if reg2 == 4:
         # %esp is not accepted in this position.
         # 4 is a special value: adds SIB byte.
@@ -564,6 +570,8 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
         reg_size = size
         out_args.append((True, kind))
       elif kind == 'addr':
+        # XXX: NaCl constraint
+        return
         assert immediate_size == 0
         immediate_size = 64
         # We use mem_arg to allow 'ds:' to be replaced with 'gs:' later.
@@ -1473,12 +1481,12 @@ def SandboxedJumps():
     if reg == 4:
       # The original validator arbitrarily disallows %esp here.
       continue
-    yield TrieOfList(map(Byte, [0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
-                                0xff, 0xe0 | reg]),      # jmp *%reg
-                     tail)
-    yield TrieOfList(map(Byte, [0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
-                                0xff, 0xd0 | reg]),      # call *%reg
-                     tail)
+    mask = [0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
+            0x4c, 0x01, 0xf8 | reg]  # add %r15, %reg
+    jmp = [0xff, 0xe0 | reg]  # jmp *%reg
+    call = [0xff, 0xd0 | reg]  # call *%reg
+    yield TrieOfList(map(Byte, mask + jmp), tail)
+    yield TrieOfList(map(Byte, mask + call), tail)
 
 
 def MergeAcceptTypes(accept_types):

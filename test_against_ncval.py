@@ -10,7 +10,7 @@ import generator
 
 bundle_size = 32
 
-bits = 32
+bits = 64
 
 
 def GetInstructions():
@@ -66,7 +66,8 @@ def Main():
 
   asm_fh.close()
   print 'Testing %i instructions' % count
-  subprocess.check_call(['gcc', '-c', '-m%i' % bits, 'tmp.S', '-o', 'tmp.o'])
+  subprocess.check_call(['i686-nacl-gcc', '-c', '-m%i' % bits,
+                         'tmp.S', '-o', 'tmp.o'])
   subprocess.check_call(['i686-nacl-gcc', '-nostartfiles', '-nostdlib',
                          '-Wl,--entry=0', # Suppress warning about _start
                          '-m%i' % bits, 'tmp.o', '-o', 'tmp.exe'])
