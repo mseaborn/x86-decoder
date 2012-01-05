@@ -462,11 +462,20 @@ lock_whitelist = set([
     'xadd', 'xchg', 'xor'])
 
 
+def SplitPrefixes(bytes):
+  index = 0
+  while bytes[index] == '66':
+    index += 1
+  return bytes[:index], bytes[index:]
+
+
 def GetRexRoot(**kwargs):
   nodes = []
-  nodes.append(GetCoreRoot(has_rex=0, rex_r=0, **kwargs))
-  nodes.append(TrieOfList([Byte(0x40 + (1 << 2))],
-                          GetCoreRoot(has_rex=1, rex_r=1, **kwargs)))
+  for bytes, node in GetCoreRoot(has_rex=0, rex_r=0, **kwargs):
+    nodes.append(TrieOfList(bytes, node))
+  for bytes, node in GetCoreRoot(has_rex=1, rex_r=1, **kwargs):
+    prefixes, bytes = SplitPrefixes(bytes)
+    nodes.append(TrieOfList(prefixes + [Byte(0x40 + (1 << 2))] + bytes, node))
   return MergeMany(nodes, NoMerge)
 
 
@@ -594,13 +603,12 @@ def GetCoreRoot(has_rex, rex_r, nacl_mode, mem_access_only=False,
       node = ImmediateNode(immediate_size)
     else:
       raise AssertionError('Unknown type')
-    node = TrieOfList(bytes, DftLabels(labels, node))
-    if data16:
-      node = TrieOfList(['66'], node)
     # XXX record this in an attr and filter later?
     if rex_r != 0 and not using_rex_r:
       return
-    top_nodes.append(node)
+    if data16:
+      bytes = ['66'] + bytes
+    top_nodes.append((bytes, DftLabels(labels, node)))
 
   def Add3DNow(instrs):
     # AMD 3DNow instructions are treated specially because the 3DNow
@@ -1399,8 +1407,7 @@ def GetCoreRoot(has_rex, rex_r, nacl_mode, mem_access_only=False,
   #     (0xbf, 'pavgusb'),
   #     ])
 
-  Log('Merge...')
-  return MergeMany(top_nodes, NoMerge)
+  return top_nodes
 
 
 def GetRoot(nacl_mode):
