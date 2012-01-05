@@ -1478,13 +1478,23 @@ def GetAll(node):
 def SandboxedJumps():
   tail = trie.MakeInterned({}, 'normal_inst')
   for reg in range(8):
-    if reg == 4:
-      # The original validator arbitrarily disallows %esp here.
-      continue
+    # The original x86-32 validator arbitrarily disallows %esp here,
+    # but we allow it.
     mask = [0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
             0x4c, 0x01, 0xf8 | reg]  # add %r15, %reg
     jmp = [0xff, 0xe0 | reg]  # jmp *%reg
     call = [0xff, 0xd0 | reg]  # call *%reg
+    yield TrieOfList(map(Byte, mask + jmp), tail)
+    yield TrieOfList(map(Byte, mask + call), tail)
+
+    # The original x86-64 validator allows useless 0x40 REX prefixes
+    # for top-bit-clear registers, but we don't.
+
+    # Top-bit-set registers.
+    mask = [0x41, 0x83, 0xe0 | reg, 0xe0,  # and $~31, %reg
+            0x4d, 0x01, 0xf8 | reg]  # add %r15, %reg
+    jmp = [0x41, 0xff, 0xe0 | reg]  # jmp *%reg
+    call = [0x41, 0xff, 0xd0 | reg]  # call *%reg
     yield TrieOfList(map(Byte, mask + jmp), tail)
     yield TrieOfList(map(Byte, mask + call), tail)
 
