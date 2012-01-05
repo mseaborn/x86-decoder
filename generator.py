@@ -149,7 +149,7 @@ def CatBitsRev(value, sizes_in_bits):
 def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
   nodes = []
   for index_reg, index_regname in GetExtendedRegs(rex_x, regs64):
-    if index_reg == 4:
+    if index_reg == 4 and rex_x == 0:
       # %esp is not accepted in the position '(reg, %esp)'.
       # In this context, register 4 is %eiz (an always-zero value).
       index_regname = 'riz'
@@ -160,7 +160,7 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
         # XXX: NaCl constraint
         if base_regname != 'r15':
           continue
-        if index_regname == 'riz' and base_regname == 'rsp' and scale == 0:
+        if index_regname == 'riz' and base_reg == 4 and scale == 0:
           index_result = ''
         else:
           index_result = '%s*%s' % (index_regname, 1 << scale)
@@ -172,7 +172,8 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
           extra = ''
           extra2 = []
         parts = [base_regname, index_result, extra, disp_str]
-        if index_reg == 4 and base_reg == 5 and mod == 0 and scale == 0:
+        if (index_regname == 'riz' and base_reg == 5 and
+            mod == 0 and scale == 0):
           desc = '%sds:VALUE32' % mem_sizes[rm_size]
         else:
           desc = FormatMemAccess(rm_size, parts)
@@ -452,9 +453,8 @@ def FilterPrefix(bytes, node):
   elif isinstance(node, DftLabel):
     return DftLabel(node.key, node.value, FilterPrefix(bytes, node.next))
   else:
-    return TrieNode({bytes[0]: FilterPrefix(bytes[1:],
-                                            node.children[bytes[0]])},
-                    node.accept)
+    next = FilterPrefix(bytes[1:], node.children.get(bytes[0], trie.EmptyNode))
+    return TrieNode({bytes[0]: next}, node.accept)
 
 
 def SubstSize(dec, size):
@@ -1506,6 +1506,20 @@ def MergeAcceptTypes(accept_types):
     raise AssertionError('Cannot merge %r' % accept_types)
 
 
+def FilterPrefixRex(prefix, trie):
+  nodes = [FilterPrefix(prefix, trie)]
+  for rex_bits in range(0x10):
+    nodes.append(FilterPrefix([Byte(0x40 | rex_bits)] + prefix, trie))
+  return MergeMany(nodes, NoMerge)
+
+
+def WriteInstructionList(filename, trie):
+  fh = open(filename, 'w')
+  for bytes, labels in GetAll(trie):
+    fh.write('%s:%s\n' % (' '.join(bytes), labels))
+  fh.close()
+
+
 def Main():
   Log('Building trie...')
   trie_root = GetRoot(nacl_mode=True)
@@ -1516,17 +1530,14 @@ def Main():
   Log('Building test subset...')
   filtered_trie = FilterModRM(trie_root)
   Log('Testing...')
-  fh = open('examples.list', 'w')
-  for bytes, labels in GetAll(filtered_trie):
-    fh.write('%s:%s\n' % (' '.join(bytes), labels))
-  fh.close()
+  WriteInstructionList('examples.list', filtered_trie)
   bits = 64
   objdump_check.DisassembleTest(lambda: GetAll(filtered_trie), bits=bits)
 
   Log('Testing all ModRM bytes...')
-  objdump_check.DisassembleTest(
-      lambda: GetAll(FilterPrefix(['01'], trie_root)),
-      bits=bits)
+  modrm_trie = FilterPrefixRex(['01'], trie_root)
+  WriteInstructionList('examples-modrm.list', modrm_trie)
+  objdump_check.DisassembleTest(lambda: GetAll(modrm_trie), bits=bits)
   Log('Testing all ModRM bytes with gs...')
   objdump_check.DisassembleTest(
       lambda: GetAll(FilterPrefix(['65', '89'], trie_root)),
