@@ -14,8 +14,8 @@
 #include "trie_table.h"
 
 
-typedef Elf32_Ehdr Elf_Ehdr;
-typedef Elf32_Shdr Elf_Shdr;
+typedef Elf64_Ehdr Elf_Ehdr;
+typedef Elf64_Shdr Elf_Shdr;
 
 
 static const int kBitsPerByte = 8;

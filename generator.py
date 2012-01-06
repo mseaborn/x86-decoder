@@ -743,6 +743,7 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
   #   AddPair(0xd2, instr, ['rm', 'cl'], modrm_opcode=modrm_opcode)
 
   # for reg_num in range(8):
+  #   # Not for x86-64.  These bytes are used for the REX prefixes instead.
   #   AddLW(0x40 + reg_num, 'inc', [('fixreg', reg_num)])
   #   AddLW(0x48 + reg_num, 'dec', [('fixreg', reg_num)])
   #   AddLW(0x50 + reg_num, 'push', [('fixreg', reg_num)])
@@ -757,9 +758,9 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
   # AddLW(0x69, 'imul', ['reg', 'rm', 'imm'])
   # AddLW(0x6b, 'imul', ['reg', 'rm', 'imm8'])
 
-  # # Short (8-bit offset) conditional jumps
-  # for cond_num, cond_name in enumerate(cond_codes):
-  #   Add(Byte(0x70 + cond_num), 'j' + cond_name, [('jump_dest', 8)])
+  # Short (8-bit offset) conditional jumps
+  for cond_num, cond_name in enumerate(cond_codes):
+    Add(Byte(0x70 + cond_num), 'j' + cond_name, [('jump_dest', 8)])
 
   # AddPair(0x84, 'test', ['rm', 'reg'])
   # AddPair(0x86, 'xchg', ['rm', 'reg'])
@@ -820,7 +821,7 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
   # # See http://code.google.com/p/nativeclient/issues/detail?id=2244
   # Add('66 c9', 'data16 leave', [])
 
-  # Add('e8', 'call', [('jump_dest', 32)])
+  Add('e8', 'call', [('jump_dest', 32)])
 
   # # String operations.
   # for prefix_bytes, prefix in [('', ''),
@@ -838,13 +839,13 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
 
   # AddPair(0xa8, 'test', ['*ax', 'imm'])
 
-  # if not nacl_mode:
-  #   Add('e0', 'loopne', [('jump_dest', 8)])
-  #   Add('e1', 'loope', [('jump_dest', 8)])
-  #   Add('e2', 'loop', [('jump_dest', 8)])
-  #   Add('e3', 'jecxz', [('jump_dest', 8)])
-  # AddLW(0xe9, 'jmp', ['jump_dest'])
-  # Add('eb', 'jmp', [('jump_dest', 8)])
+  if not nacl_mode:
+    Add('e0', 'loopne', [('jump_dest', 8)])
+    Add('e1', 'loope', [('jump_dest', 8)])
+    Add('e2', 'loop', [('jump_dest', 8)])
+    Add('e3', 'jecxz', [('jump_dest', 8)])
+  AddLW(0xe9, 'jmp', ['jump_dest'])
+  Add('eb', 'jmp', [('jump_dest', 8)])
 
   # Add('f5', 'cmc', []) # Complement carry flag
   # Add('f8', 'clc', []) # Clear carry flag
@@ -1114,18 +1115,18 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
   #   # See http://code.google.com/p/nativeclient/issues/detail?id=1970
   #   AddForm('66 0f 78', 'extrq', 'Udq Ib Ib', modrm_opcode=0)
 
-  # for cond_num, cond_name in enumerate(cond_codes):
-  #   # Conditional move.  Added in P6.
-  #   AddLW2('0f ' + Byte(0x40 + cond_num), 'cmov' + cond_name, ['reg', 'rm'])
-  #   # 4-byte offset jumps.
-  #   Add('0f ' + Byte(0x80 + cond_num), 'j' + cond_name, [('jump_dest', 32)])
-  #   # 2-byte offset jumps.
-  #   if not nacl_mode:
-  #     Add('66 0f ' + Byte(0x80 + cond_num), 'j' + cond_name,
-  #         [('jump_dest', 16)])
-  #   # Byte set on condition
-  #   Add('0f ' + Byte(0x90 + cond_num), 'set' + cond_name, [('rm', 8)],
-  #       modrm_opcode=0)
+  for cond_num, cond_name in enumerate(cond_codes):
+    # Conditional move.  Added in P6.
+    AddLW2('0f ' + Byte(0x40 + cond_num), 'cmov' + cond_name, ['reg', 'rm'])
+    # 4-byte offset jumps.
+    Add('0f ' + Byte(0x80 + cond_num), 'j' + cond_name, [('jump_dest', 32)])
+    # 2-byte offset jumps.
+    if not nacl_mode:
+      Add('66 0f ' + Byte(0x80 + cond_num), 'j' + cond_name,
+          [('jump_dest', 16)])
+    # Byte set on condition
+    Add('0f ' + Byte(0x90 + cond_num), 'set' + cond_name, [('rm', 8)],
+        modrm_opcode=0)
 
   # Add('0f a2', 'cpuid', [])
   # if not nacl_mode:
