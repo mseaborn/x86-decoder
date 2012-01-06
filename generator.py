@@ -1573,6 +1573,10 @@ def SandboxedJumps():
       yield TrieOfList(map(Byte, mask + jmp), tail)
       yield TrieOfList(map(Byte, mask + call), tail)
 
+  # TODO: These make SandboxedJumps() misnamed.
+  yield TrieOfList(map(Byte, [0x48, 0x89, 0xe5]), tail) # mov %rsp, %rbp
+  yield TrieOfList(map(Byte, [0x48, 0x89, 0xec]), tail) # mov %rbp, %rsp
+
 
 def MergeAcceptTypes(accept_types):
   if accept_types == set(['normal_inst', False]):
