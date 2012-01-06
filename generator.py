@@ -517,6 +517,18 @@ def GetRexRoot(**kwargs):
   return MergeMany(nodes, NoMerge)
 
 
+def CoerceKind(kind):
+  if isinstance(kind, str):
+    return {"kind": kind}
+  else:
+    assert isinstance(kind, dict)
+    return kind
+
+
+def FixReg(reg_num, readonly=False):
+  return {"kind": "fixreg", "reg_num": reg_num, "readonly": readonly}
+
+
 def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
                 mem_access_only=False, lockable_only=False,
                 gs_access_only=False):
@@ -562,7 +574,9 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     def SimpleArg(arg):
       out_args.append((False, arg))
 
-    for kind, size in args:
+    for kind_info, size in args:
+      kind_info = CoerceKind(kind_info)
+      kind = kind_info['kind']
       if kind == 'imm':
         # We can have multiple immediates.  Needed for 'insertq'.
         immediate_size += size
@@ -614,10 +628,10 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
         SimpleArg(RegsBySize(has_rex, size)[0])
       elif kind in ('1', 'cl', 'st'):
         SimpleArg(kind)
-      elif isinstance(kind, tuple) and len(kind) == 2 and kind[0] == 'fixreg':
-        regname = RegsBySize(has_rex, size)[kind[1] + (rex_b << 3)]
+      elif kind == 'fixreg':
+        regname = RegsBySize(has_rex, size)[kind_info["reg_num"] + (rex_b << 3)]
         # XXX: NaCl constraint
-        if regname in nacl_unwritable_reg:
+        if not kind_info['readonly'] and regname in nacl_unwritable_reg:
           return
         SimpleArg(regname)
       elif kind in ('es:[edi]', 'ds:[esi]'):
@@ -769,8 +783,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     # Not for x86-64.  These bytes are used for the REX prefixes instead.
     # AddLW(0x40 + reg_num, 'inc', [('fixreg', reg_num)])
     # AddLW(0x48 + reg_num, 'dec', [('fixreg', reg_num)])
-    AddLWPushPop(0x50 + reg_num, 'push', [('fixreg', reg_num)])
-    AddLWPushPop(0x58 + reg_num, 'pop', [('fixreg', reg_num)])
+    AddLWPushPop(0x50 + reg_num, 'push', [FixReg(reg_num, readonly=True)])
+    AddLWPushPop(0x58 + reg_num, 'pop', [FixReg(reg_num)])
 
   # These 'push' instructions all move %rsp by 8 bytes.  In binutils
   # 2.20.1, objdump incorrectly decodes "66 68" as having a following
@@ -912,8 +926,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddPair(0xa0, 'mov', ['*ax', 'addr'])
   AddPair(0xa2, 'mov', ['addr', '*ax'])
   for reg_num in range(8):
-    Add(Byte(0xb0 + reg_num), 'mov', [(('fixreg', reg_num), 8), ('imm', 8)])
-    AddLW(0xb8 + reg_num, 'mov', [('fixreg', reg_num), 'imm_movabs'])
+    Add(Byte(0xb0 + reg_num), 'mov', [(FixReg(reg_num), 8), ('imm', 8)])
+    AddLW(0xb8 + reg_num, 'mov', [FixReg(reg_num), 'imm_movabs'])
 
   # Two-byte opcodes.
 
