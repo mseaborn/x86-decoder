@@ -514,8 +514,13 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
   top_nodes = []
 
   def Add(bytes, instr_name, args, modrm_opcode=None, data16=False):
-    if lockable_only and instr_name not in lock_whitelist:
-      return
+    if lockable_only:
+      if instr_name not in lock_whitelist:
+        return
+      dest_kind = args[0][0]
+      if dest_kind != 'rm':
+        assert dest_kind in ('reg', '*ax')
+        return
     bytes = bytes.split()
     if nacl_mode:
       # The following restrictions are enforced by the original x86-32
