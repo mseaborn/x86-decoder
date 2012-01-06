@@ -697,7 +697,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
       return size
 
   def AddLW(opcode, instr, format, **kwargs):
-    Add(Byte(opcode), instr, SubstSize(format, RexSize(16)), data16=True, **kwargs)
+    Add(Byte(opcode), instr, SubstSize(format, RexSize(16)),
+        data16=True, **kwargs)
     Add(Byte(opcode), instr, SubstSize(format, RexSize(32)), **kwargs)
 
   # Like AddLW(), but takes a string rather than an int.
@@ -705,6 +706,13 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   def AddLW2(opcode, instr, format, **kwargs):
     Add(opcode, instr, SubstSize(format, RexSize(16)), data16=True, **kwargs)
     Add(opcode, instr, SubstSize(format, RexSize(32)), **kwargs)
+
+  # Like AddLW(), but 'push' and 'pop' never use a 32-bit operand.
+  # They use a 64-bit operand even without a REX.W prefix.
+  def AddLWPushPop(opcode, instr, format, **kwargs):
+    Add(Byte(opcode), instr, SubstSize(format, RexSize(16)),
+        data16=True, **kwargs)
+    Add(Byte(opcode), instr, SubstSize(format, 64), **kwargs)
 
   def AddPair(opcode, instr, format, **kwargs):
     Add(Byte(opcode), instr, SubstSize(format, 8), **kwargs)
@@ -757,18 +765,27 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   AddPair(0xd0, instr, ['rm', '1'], modrm_opcode=modrm_opcode)
   #   AddPair(0xd2, instr, ['rm', 'cl'], modrm_opcode=modrm_opcode)
 
-  # for reg_num in range(8):
-  #   # Not for x86-64.  These bytes are used for the REX prefixes instead.
-  #   AddLW(0x40 + reg_num, 'inc', [('fixreg', reg_num)])
-  #   AddLW(0x48 + reg_num, 'dec', [('fixreg', reg_num)])
-  #   AddLW(0x50 + reg_num, 'push', [('fixreg', reg_num)])
-  #   AddLW(0x58 + reg_num, 'pop', [('fixreg', reg_num)])
+  for reg_num in range(8):
+    # Not for x86-64.  These bytes are used for the REX prefixes instead.
+    # AddLW(0x40 + reg_num, 'inc', [('fixreg', reg_num)])
+    # AddLW(0x48 + reg_num, 'dec', [('fixreg', reg_num)])
+    AddLWPushPop(0x50 + reg_num, 'push', [('fixreg', reg_num)])
+    AddLWPushPop(0x58 + reg_num, 'pop', [('fixreg', reg_num)])
 
-  # # These both move %esp by 4 bytes.
-  # AddLW(0x68, 'push', ['imm'])
-  # Add('6a', 'push', [('imm', 8)])
-  # # This moves %esp by 2 bytes.
-  # Add('66 6a', 'data16 push', [('imm', 8)])
+  # These 'push' instructions all move %rsp by 8 bytes.  In binutils
+  # 2.20.1, objdump incorrectly decodes "66 68" as having a following
+  # 32-bit immediate, when it really has a 16-bit immediate.  This is
+  # fixed in newer a binutils version.
+  # With this fixed, the next two lines can be replaced by:
+  #   AddLWPushPop(0x68, 'push', ['imm'])
+  Add('68', 'push', [('imm', 32)])
+  # Add('68', 'FIXME push', [('imm', 16)], data16=True)
+  Add('6a', 'push', [('imm', 8)])
+  # This moves %rsp by 2 bytes.
+  # The original x86-64 validator does not allow this although the
+  # original x86-32 validator does.
+  if not nacl_mode:
+    Add('66 6a', 'data16 push', [('imm', 8)])
 
   # AddLW(0x69, 'imul', ['reg', 'rm', 'imm'])
   # AddLW(0x6b, 'imul', ['reg', 'rm', 'imm8'])
@@ -780,8 +797,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddPair(0x84, 'test', ['rm', 'reg'])
   # AddPair(0x86, 'xchg', ['rm', 'reg'])
   # AddLW(0x8d, 'lea', ['reg', 'lea_mem'])
-  # # Group 1a just contains 'pop'.
-  # AddLW(0x8f, 'pop', ['rm'], modrm_opcode=0)
+  # Group 1a just contains 'pop'.
+  AddLWPushPop(0x8f, 'pop', ['rm'], modrm_opcode=0)
 
   # # 'nop' is really 'xchg %eax, %eax'.
   # Add('90', 'nop', [])
@@ -881,8 +898,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # # Group 4/5
   # AddPair(0xfe, 'inc', ['rm'], modrm_opcode=0)
   # AddPair(0xfe, 'dec', ['rm'], modrm_opcode=1)
-  # # Group 5
-  # AddLW(0xff, 'push', ['rm'], modrm_opcode=6)
+  # Group 5
+  AddLWPushPop(0xff, 'push', ['rm'], modrm_opcode=6)
   # # NaCl disallows using these without a mask instruction first.
   # # Note that allowing jmp/call with a data16 prefix isn't very useful.
   # if not nacl_mode:
