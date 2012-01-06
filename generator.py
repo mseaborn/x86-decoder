@@ -872,6 +872,7 @@ def GetCoreRoot(nacl_mode, mem_access_only=False, lockable_only=False,
   AddForm('f2 0f 2b', 'movntsd', 'Mq Vsd')
   # binutils correctly disassembles 'cvttps2pi' with 'QWORD PTR', but
   # the assembler wrongly only accepts 'XMMWORD PTR'.
+  # See http://sourceware.org/bugzilla/show_bug.cgi?id=13572
   # The AMD manual has 'Pq Wps' for 'cvttps2pi', but 'W' is wrong (it
   # should be an MMX register, not an XMM register) and 'ps' is wrong
   # (it should be 64-bit, not 128-bit).
@@ -1096,6 +1097,7 @@ def GetCoreRoot(nacl_mode, mem_access_only=False, lockable_only=False,
   AddForm('f2 0f c2', 'cmpsd', 'Vsd Wsd Ib')
   # binutils incorrectly disassembles 'movnti' with 'QWORD PTR', even
   # though the assembler only accepts 'DWORD PTR'.
+  # See http://sourceware.org/bugzilla/show_bug.cgi?id=13571
   Add('0f c3', 'FIXME movnti', [('mem', 32), ('reg', 32)])
   # Even though pinsrw only uses the bottom 16 bits of the source
   # register, it is written as using a 32-bit register.  The 2nd arg
