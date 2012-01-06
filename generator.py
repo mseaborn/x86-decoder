@@ -521,6 +521,7 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
       # The following restrictions are enforced by the original x86-32
       # NaCl validator, but might not be needed for safety.
       # %gs is allowed only with a limited set of instructions.
+      # XXX: not for x86-64.
       if gs_access_only and (instr_name not in ('mov', 'cmp') or data16):
         return
       # Combining the data16 prefix with rep/repnz is not allowed.
@@ -1445,18 +1446,19 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
 def GetRoot(nacl_mode):
   Log('Core instructions...')
   core = GetRexRoot(nacl_mode=nacl_mode)
-  Log('Memory access instructions...')
-  mem = TrieOfList(['65'], DftLabel('gs_prefix', None,
-                                    GetRexRoot(nacl_mode=nacl_mode,
-                                               mem_access_only=True,
-                                               gs_access_only=True)))
+  # Not for x86-64.
+  # Log('Memory access instructions...')
+  # mem = TrieOfList(['65'], DftLabel('gs_prefix', None,
+  #                                   GetRexRoot(nacl_mode=nacl_mode,
+  #                                              mem_access_only=True,
+  #                                              gs_access_only=True)))
   Log('Locked instructions...')
   lock = TrieOfList(['f0'], DftLabel('lock_prefix', None,
                                      GetRexRoot(nacl_mode=nacl_mode,
                                                 mem_access_only=True,
                                                 lockable_only=True)))
   Log('Merge...')
-  return MergeMany([core, mem, lock], NoMerge)
+  return MergeMany([core, lock], NoMerge)
 
 
 def ExpandArg((do_expand, arg), label_map):
@@ -1466,6 +1468,7 @@ def ExpandArg((do_expand, arg), label_map):
     return arg
 
 def InstrFromLabels(label_map):
+  # XXX: Not for x86-64.
   if 'gs_prefix' in label_map:
     # Modifying the string to add 'gs:' is rather hacky, but it is
     # probably not worth doing it more cleanly, because NaCl has been
