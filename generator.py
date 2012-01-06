@@ -186,7 +186,10 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
         bytes = ([Byte((scale << 6) | (index_reg << 3) | base_reg)]
                  + extra2
                  + ['XX'] * disp_size)
-        nodes.append(TrieOfList(bytes, DftLabel('rm_arg', desc, tail)))
+        test_keep = (index_reg == 1 and scale == 0 and disp_size == 1)
+        nodes.append(TrieOfList(bytes,
+                                DftLabel('test_keep', test_keep,
+                                         DftLabel('rm_arg', desc, tail))))
   return MergeMany(nodes, NoMerge)
 
 
@@ -235,7 +238,8 @@ def ModRMReg(has_rex, rex_b, rm_size, tail):
     # XXX: NaCl constraint
     if regname2 in nacl_unwritable_reg:
       continue
-    got.append((mod, reg2, DftLabel('rm_arg', regname2, tail)))
+    got.append((mod, reg2, DftLabel('test_keep', reg2 == 2,
+                                    DftLabel('rm_arg', regname2, tail))))
   return got
 
 
@@ -257,7 +261,8 @@ def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
     for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
                                   rm_allow_reg, rm_allow_mem, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
-                       DftLabel('reg_arg', regname, node))
+                       DftLabel('test_keep', reg == 3,
+                                DftLabel('reg_arg', regname, node)))
 
 
 # Although the node this function returns won't get reused, the child
@@ -268,9 +273,7 @@ def ModRMSingleArg(has_rex, rex_x, rex_b, rm_size,
   nodes = []
   for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
                                 rm_allow_reg, rm_allow_mem, tail):
-    test_keep = (mod == 0 and reg2 == 0) or (mod == 3 and reg2 == 7)
-    nodes.append(TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)],
-                            DftLabel('test_keep', test_keep, node)))
+    nodes.append(TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)], node))
   return MergeMany(nodes, NoMerge)
 
 
@@ -380,10 +383,7 @@ def ModRMNode(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
               rm_allow_reg, rm_allow_mem, tail):
   nodes = list(ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
                      rm_allow_reg, rm_allow_mem, tail))
-  node = MergeMany(nodes, NoMerge)
-  return TrieNode(dict((key, DftLabel('test_keep', key == '00' or key == 'ff',
-                                      value))
-                       for key, value in node.children.iteritems()))
+  return MergeMany(nodes, NoMerge)
 
 
 # In cases where the instruction name and format depend on the
