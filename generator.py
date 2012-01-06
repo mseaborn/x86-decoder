@@ -38,6 +38,7 @@ nacl_unwritable_reg = (
     )
 
 regs_by_size = {
+  64: regs64,
   32: regs32,
   16: regs16,
   'x87': regs_x87,
@@ -473,6 +474,12 @@ def SubstSize(dec, size):
   def Subst(value):
     if value == 'imm8':
       return ('imm', 8)
+    elif size == 64 and value in ('imm', 'jump_dest'):
+      # Immediates are still just 32-bit even with REX.W set.
+      return (value, 32)
+    elif value == 'imm_movabs':
+      # This is one immediate, however, that can be 64-bit.
+      return ('imm', size)
     else:
       return (value, size)
   return map(Subst, dec)
@@ -495,22 +502,24 @@ def SplitPrefixes(bytes):
 
 def GetRexRoot(**kwargs):
   nodes = []
-  for bytes, node in GetCoreRoot(has_rex=0, rex_r=0, rex_x=0, rex_b=0,
+  for bytes, node in GetCoreRoot(has_rex=0, rex_w=0, rex_r=0, rex_x=0, rex_b=0,
                                  **kwargs):
     nodes.append(TrieOfList(bytes, node))
-  for rex_r in (0, 1):
-    for rex_x in (0, 1):
-      for rex_b in (0, 1):
-        for bytes, node in GetCoreRoot(has_rex=1, rex_r=rex_r, rex_x=rex_x,
-                                       rex_b=rex_b, **kwargs):
-          prefixes, bytes = SplitPrefixes(bytes)
-          rex = 0x40 | (rex_r << 2) | (rex_x << 1) | rex_b
-          nodes.append(TrieOfList(prefixes + [Byte(rex)] + bytes, node))
+  for rex_bits in xrange(0x10):
+    for bytes, node in GetCoreRoot(has_rex=1,
+                                   rex_w=(rex_bits >> 3) & 1,
+                                   rex_r=(rex_bits >> 2) & 1,
+                                   rex_x=(rex_bits >> 1) & 1,
+                                   rex_b=rex_bits & 1,
+                                   **kwargs):
+      prefixes, bytes = SplitPrefixes(bytes)
+      nodes.append(TrieOfList(prefixes + [Byte(0x40 | rex_bits)] + bytes, node))
   return MergeMany(nodes, NoMerge)
 
 
-def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
-                lockable_only=False, gs_access_only=False):
+def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
+                mem_access_only=False, lockable_only=False,
+                gs_access_only=False):
   top_nodes = []
 
   def Add(bytes, instr_name, args, modrm_opcode=None, data16=False):
@@ -681,15 +690,21 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
     AddFPMem(bytes, instr_name, modrm_opcode, size)
     AddFPReg(bytes, instr_name, modrm_opcode, format)
 
+  def RexSize(size):
+    if rex_w:
+      return 64
+    else:
+      return size
+
   def AddLW(opcode, instr, format, **kwargs):
-    Add(Byte(opcode), instr, SubstSize(format, 16), data16=True, **kwargs)
-    Add(Byte(opcode), instr, SubstSize(format, 32), **kwargs)
+    Add(Byte(opcode), instr, SubstSize(format, RexSize(16)), data16=True, **kwargs)
+    Add(Byte(opcode), instr, SubstSize(format, RexSize(32)), **kwargs)
 
   # Like AddLW(), but takes a string rather than an int.
   # TODO: Unify these.
   def AddLW2(opcode, instr, format, **kwargs):
-    Add(opcode, instr, SubstSize(format, 16), data16=True, **kwargs)
-    Add(opcode, instr, SubstSize(format, 32), **kwargs)
+    Add(opcode, instr, SubstSize(format, RexSize(16)), data16=True, **kwargs)
+    Add(opcode, instr, SubstSize(format, RexSize(32)), **kwargs)
 
   def AddPair(opcode, instr, format, **kwargs):
     Add(Byte(opcode), instr, SubstSize(format, 8), **kwargs)
@@ -881,7 +896,7 @@ def GetCoreRoot(has_rex, rex_r, rex_x, rex_b, nacl_mode, mem_access_only=False,
   AddPair(0xa2, 'mov', ['addr', '*ax'])
   for reg_num in range(8):
     Add(Byte(0xb0 + reg_num), 'mov', [(('fixreg', reg_num), 8), ('imm', 8)])
-    AddLW(0xb8 + reg_num, 'mov', [('fixreg', reg_num), 'imm'])
+    AddLW(0xb8 + reg_num, 'mov', [('fixreg', reg_num), 'imm_movabs'])
 
   # Two-byte opcodes.
 

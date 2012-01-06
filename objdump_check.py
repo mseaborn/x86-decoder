@@ -66,7 +66,7 @@ whitespace_regexp = re.compile('\s+')
 comment_regexp = re.compile('\s+#.*$')
 jump_regexp = re.compile(
     '^(jn?[a-z]{1,2}|call|jmp[lw]?|je?cxz|loop(e|ne)?) 0x[0-9a-f]+$')
-rex_regexp = re.compile(r'rex(\.R?X?B?)? ')
+rex_regexp = re.compile(r'rex(\.W?R?X?B?)? ')
 
 
 def NormaliseObjdumpDisasm(disasm):
@@ -130,9 +130,9 @@ def CrossCheck(obj_file, list_file):
     if got_addr != expected_addr:
       # This only catches mismatches on the previous instruction,
       # which is why we added an extra final instruction earlier.
-      print 'Length mismatch on previous instruction: got %i, expected %i' % (
-          prev_length + got_addr - expected_addr,
-          prev_length)
+      print ('Length mismatch on previous instruction (%i): '
+             'got %i, expected %i'
+             % (index, prev_length + got_addr - expected_addr, prev_length))
       failed = True
       break
     expected_addr += len(bytes)
