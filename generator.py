@@ -37,6 +37,8 @@ nacl_unwritable_reg = (
     'rbp', 'ebp', 'bp', 'bpl',
     )
 
+nacl_base_regs = ('r15', 'rsp', 'rbp')
+
 regs_by_size = {
   64: regs64,
   32: regs32,
@@ -165,7 +167,7 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
       # %esi/%edi are missing from headings in table in doc.
       for base_reg, base_regname in GetExtendedRegs(rex_b, regs64):
         # XXX: NaCl constraint
-        if base_regname != 'r15':
+        if base_regname not in nacl_base_regs:
           continue
         labels = []
         if index_regname == 'riz' and base_reg == 4 and scale == 0:
@@ -214,7 +216,7 @@ def ModRMMem(rex_x, rex_b, rm_size, tail):
                                   (2, 4, 'VALUE32')):
     for reg2, regname2 in GetExtendedRegs(rex_b, regs64):
       # XXX: NaCl constraint
-      if regname2 != 'r15':
+      if regname2 not in nacl_base_regs:
         continue
       if reg2 == 4:
         # %esp is not accepted in this position.
