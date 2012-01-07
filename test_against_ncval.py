@@ -5,6 +5,7 @@
 import os
 import subprocess
 
+from generator import Byte
 import generator
 
 
@@ -34,6 +35,11 @@ def Main():
 
   count = 0
   for bytes, label_map in GetInstructions():
+    if 'requires_fixup' in label_map:
+      # Add the fixup:  "add %r15, %esp/%ebp"
+      reg = label_map['requires_fixup']
+      assert reg in (4, 5)
+      bytes = bytes + map(Byte, [0x4c, 0x01, 0xf8 | reg])
     # For relative jumps, fill in wildcards with 0 so that the jumps
     # point to somewhere valid.  Otherwise, use a non-zero value to
     # make things more interesting.

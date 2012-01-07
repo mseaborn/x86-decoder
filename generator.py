@@ -253,17 +253,22 @@ def ModRM1(has_rex, rex_x, rex_b, rm_size, rm_allow_reg, rm_allow_mem, tail):
       yield result
 
 
-def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
+def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, reg_canzeroextend, rm_size,
           rm_allow_reg, rm_allow_mem, tail):
   for reg, regname in GetExtendedRegs(rex_r, RegsBySize(has_rex, reg_size)):
     # XXX: NaCl constraint
-    if regname in nacl_unwritable_reg:
+    labels = []
+    if reg_canzeroextend and regname in ('esp', 'ebp'):
+      labels.append(('requires_fixup', reg))
+    elif regname in nacl_unwritable_reg:
       continue
     for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
                                   rm_allow_reg, rm_allow_mem, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
-                       DftLabel('test_keep', reg == 3,
-                                DftLabel('reg_arg', regname, node)))
+                       DftLabels(labels,
+                                 DftLabel('test_keep',
+                                          reg == 3 or len(labels) != 0,
+                                          DftLabel('reg_arg', regname, node))))
 
 
 # Although the node this function returns won't get reused, the child
@@ -380,10 +385,10 @@ def ImmediateNode(immediate_size):
 
 
 @Memoize
-def ModRMNode(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
-              rm_allow_reg, rm_allow_mem, tail):
-  nodes = list(ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
-                     rm_allow_reg, rm_allow_mem, tail))
+def ModRMNode(has_rex, rex_r, rex_x, rex_b, reg_size, reg_canzeroextend,
+              rm_size, rm_allow_reg, rm_allow_mem, tail):
+  nodes = list(ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, reg_canzeroextend,
+                     rm_size, rm_allow_reg, rm_allow_mem, tail))
   return MergeMany(nodes, NoMerge)
 
 
@@ -567,6 +572,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     rm_allow_reg = not mem_access_only
     rm_allow_mem = True
     reg_size = None
+    reg_canzeroextend = None
     out_args = []
     labels = []
     mem_access = False
@@ -609,6 +615,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
         # Register specified by the ModRM reg field.
         assert reg_size is None
         reg_size = size
+        reg_canzeroextend = kind_info.get('canzeroextend', False)
         out_args.append((True, kind))
       elif kind == 'addr':
         # XXX: NaCl constraint
@@ -649,8 +656,9 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
 
     if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
-      node = ModRMNode(has_rex, rex_r, rex_x, rex_b, reg_size, rm_size,
-                       rm_allow_reg, rm_allow_mem,
+      node = ModRMNode(has_rex, rex_r, rex_x, rex_b,
+                       reg_size, reg_canzeroextend,
+                       rm_size, rm_allow_reg, rm_allow_mem,
                        ImmediateNode(immediate_size))
       if not (rm_allow_reg and rm_allow_mem):
         node = PushLabels(labels, node)
@@ -921,7 +929,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
 
   AddPair(0x88, 'mov', ['rm', 'reg'])
-  AddPair(0x8a, 'mov', ['reg', 'rm'])
+  AddPair(0x8a, 'mov', [{'kind': 'reg', 'canzeroextend': True}, 'rm'])
   AddPair(0xc6, 'mov', ['rm', 'imm'], modrm_opcode=0) # Group 11
   AddPair(0xa0, 'mov', ['*ax', 'addr'])
   AddPair(0xa2, 'mov', ['addr', '*ax'])
@@ -1616,8 +1624,11 @@ def FilterPrefixRex(prefix, trie):
 
 def WriteInstructionList(filename, trie):
   fh = open(filename, 'w')
-  for bytes, labels in GetAll(trie):
-    fh.write('%s:%s\n' % (' '.join(bytes), labels))
+  for bytes, labels in FlattenTrie(trie):
+    suffix = ''
+    if 'requires_fixup' in labels:
+      suffix = ' {requires_fixup:%s}' % labels['requires_fixup']
+    fh.write('%s:%s%s\n' % (' '.join(bytes), InstrFromLabels(labels), suffix))
   fh.close()
 
 
