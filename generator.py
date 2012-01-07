@@ -1574,6 +1574,7 @@ def SandboxedJumps():
       yield TrieOfList(map(Byte, mask + call), tail)
 
   # TODO: These make SandboxedJumps() misnamed.
+  # TODO: Also allow non-canonical register orderings.
   yield TrieOfList(map(Byte, [0x48, 0x89, 0xe5]), tail) # mov %rsp, %rbp
   yield TrieOfList(map(Byte, [0x48, 0x89, 0xec]), tail) # mov %rbp, %rsp
 
@@ -1581,6 +1582,7 @@ def SandboxedJumps():
     return TrieOfList(bytes.split(), tail)
   # Nops
   # TODO: This overlaps with 90 defined elsewhere.
+  # TODO: Add decodings of these instructions.
   yield Munge('90')
   yield Munge('66 90')
   yield Munge('0f 1f 00')
