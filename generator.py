@@ -167,10 +167,12 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
         # XXX: NaCl constraint
         if base_regname != 'r15':
           continue
+        labels = []
         if index_regname == 'riz' and base_reg == 4 and scale == 0:
           index_result = ''
         else:
           index_result = '%s*%s' % (index_regname, 1 << scale)
+          labels.append(('requires_zeroextend', index_reg + (rex_x << 3)))
         if base_reg == 5 and mod == 0:
           base_regname = ''
           extra = 'VALUE32'
@@ -190,7 +192,8 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
         test_keep = (index_reg == 1 and scale == 0 and disp_size == 1)
         nodes.append(TrieOfList(bytes,
                                 DftLabel('test_keep', test_keep,
-                                         DftLabel('rm_arg', desc, tail))))
+                                         DftLabel('rm_arg', desc,
+                                                  DftLabels(labels, tail)))))
   return MergeMany(nodes, NoMerge)
 
 
@@ -1637,8 +1640,9 @@ def WriteInstructionList(filename, trie):
   fh = open(filename, 'w')
   for bytes, labels in FlattenTrie(trie):
     suffix = ''
-    if 'requires_fixup' in labels:
-      suffix = ' {requires_fixup:%s}' % labels['requires_fixup']
+    for key in ('requires_fixup', 'requires_zeroextend'):
+      if key in labels:
+        suffix = ' {%s:%s}' % (key, labels[key])
     fh.write('%s:%s%s\n' % (' '.join(bytes), InstrFromLabels(labels), suffix))
   fh.close()
 

@@ -40,6 +40,15 @@ def Main():
       reg = label_map['requires_fixup']
       assert reg in (4, 5)
       bytes = bytes + map(Byte, [0x4c, 0x01, 0xf8 | reg])
+    if 'requires_zeroextend' in label_map:
+      reg = label_map['requires_zeroextend']
+      # Add the pre-masking:  "movl %reg, %reg"
+      modrm = (3 << 6) | ((reg & 7) << 3) | (reg & 7)
+      if reg < 8:
+        extra = [0x89, modrm]
+      else:
+        extra = [0x45, 0x89, modrm]
+      bytes = map(Byte, extra) + bytes
     # For relative jumps, fill in wildcards with 0 so that the jumps
     # point to somewhere valid.  Otherwise, use a non-zero value to
     # make things more interesting.
