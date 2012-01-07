@@ -950,25 +950,25 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddLW(0xe9, 'jmp', ['jump_dest'])
   Add('eb', 'jmp', [('jump_dest', 8)])
 
-  # Add('f5', 'cmc', []) # Complement carry flag
-  # Add('f8', 'clc', []) # Clear carry flag
-  # Add('f9', 'stc', []) # Set carry flag
-  # Add('fc', 'cld', []) # Clear direction flag
-  # Add('fd', 'std', []) # Set direction flag
+  Add('f5', 'cmc', []) # Complement carry flag
+  Add('f8', 'clc', []) # Clear carry flag
+  Add('f9', 'stc', []) # Set carry flag
+  Add('fc', 'cld', []) # Clear direction flag
+  Add('fd', 'std', []) # Set direction flag
 
-  # # Group 3
-  # AddPair(0xf6, 'test', ['rm', 'imm'], modrm_opcode=0)
-  # for instr, modrm_opcode in [('not', 2),
-  #                             ('neg', 3),
-  #                             ('mul', 4),
-  #                             ('imul', 5),
-  #                             ('div', 6),
-  #                             ('idiv', 7)]:
-  #   AddPair(0xf6, instr, ['rm'], modrm_opcode=modrm_opcode)
+  # Group 3
+  AddPair(0xf6, 'test', ['rm', 'imm'], modrm_opcode=0)
+  for instr, modrm_opcode in [('not', 2),
+                              ('neg', 3),
+                              ('mul', 4),
+                              ('imul', 5),
+                              ('div', 6),
+                              ('idiv', 7)]:
+    AddPair(0xf6, instr, ['rm'], modrm_opcode=modrm_opcode)
 
-  # # Group 4/5
-  # AddPair(0xfe, 'inc', ['rm'], modrm_opcode=0)
-  # AddPair(0xfe, 'dec', ['rm'], modrm_opcode=1)
+  # Group 4/5
+  AddPair(0xfe, 'inc', ['rm'], modrm_opcode=0)
+  AddPair(0xfe, 'dec', ['rm'], modrm_opcode=1)
   # Group 5
   AddLWPushPop(0xff, 'push', ['rm'], modrm_opcode=6)
   # # NaCl disallows using these without a mask instruction first.
@@ -1365,14 +1365,14 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   Add('0f ae', 'fxrstor', [('mem', 'fxsave_size')], modrm_opcode=1)
   # Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
   # Add('0f ae', 'stmxcsr', [('mem', 32)], modrm_opcode=3)
-  # # TODO: The AMD manual permits 8 different encodings of each of
-  # # these three instructions (with any value of the 3-bit RM field).
-  # # The original x86-32 validator allows all of these.  However,
-  # # objdump refuses to decode all but the RM==0 encodings.
-  # Add('0f ae e8', 'lfence', []) # modrm_opcode=5
-  # Add('0f ae f0', 'mfence', []) # modrm_opcode=6
-  # Add('0f ae f8', 'sfence', []) # modrm_opcode=7
-  # Add('0f ae', 'clflush', [('mem', 8)], modrm_opcode=7)
+  # TODO: The AMD manual permits 8 different encodings of each of
+  # these three instructions (with any value of the 3-bit RM field).
+  # The original x86-32 validator allows all of these.  However,
+  # objdump refuses to decode all but the RM==0 encodings.
+  Add('0f ae e8', 'lfence', []) # modrm_opcode=5
+  Add('0f ae f0', 'mfence', []) # modrm_opcode=6
+  Add('0f ae f8', 'sfence', []) # modrm_opcode=7
+  Add('0f ae', 'clflush', [('mem', 8)], modrm_opcode=7)
 
   # # x87 floating point instructions.
 
