@@ -1577,6 +1577,26 @@ def SandboxedJumps():
   yield TrieOfList(map(Byte, [0x48, 0x89, 0xe5]), tail) # mov %rsp, %rbp
   yield TrieOfList(map(Byte, [0x48, 0x89, 0xec]), tail) # mov %rbp, %rsp
 
+  def Munge(bytes):
+    return TrieOfList(bytes.split(), tail)
+  # Nops
+  # TODO: This overlaps with 90 defined elsewhere.
+  yield Munge('90')
+  yield Munge('66 90')
+  yield Munge('0f 1f 00')
+  yield Munge('0f 1f 40 00')
+  yield Munge('0f 1f 44 00 00')
+  yield Munge('66 0f 1f 44 00 00')
+  yield Munge('0f 1f 80 00 00 00 00')
+  yield Munge('0f 1f 84 00 00 00 00 00')
+  yield Munge('66 0f 1f 84 00 00 00 00 00')
+  yield Munge('66 2e 0f 1f 84 00 00 00 00 00')
+  yield Munge('66 66 2e 0f 1f 84 00 00 00 00 00')
+  yield Munge('66 66 66 2e 0f 1f 84 00 00 00 00 00')
+  yield Munge('66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
+  yield Munge('66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
+  yield Munge('66 66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
+
 
 def MergeAcceptTypes(accept_types):
   if accept_types == set(['normal_inst', False]):
