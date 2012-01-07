@@ -18,7 +18,7 @@ def SortKey(node):
 
 
 def WriteTransitionTable(out, nodes, node_to_id):
-  out.write('static const uint8_t trie_table[][256] = {\n')
+  out.write('static const trie_state_t trie_table[][256] = {\n')
   for node in nodes:
     out.write('  /* state %i: accept=%s */ {\n' %
               (node_to_id[node], node.accept))
@@ -40,7 +40,7 @@ def WriteTransitionTable(out, nodes, node_to_id):
     out.write('  },\n')
   out.write('};\n')
   out.write("""
-static inline uint8_t trie_lookup(uint8_t state, uint8_t byte) {
+static inline trie_state_t trie_lookup(trie_state_t state, uint8_t byte) {
   return trie_table[state][byte];
 }
 """)
@@ -59,7 +59,15 @@ def Main():
   out = open('trie_table.h', 'w')
   out.write('\n#include <stdint.h>\n\n')
 
-  out.write('static const int trie_start = %i;\n\n' % node_to_id[root_node])
+  if len(nodes) < 0x100:
+    out.write('typedef uint8_t trie_state_t;\n\n')
+  elif len(nodes) < 0x10000:
+    out.write('typedef uint16_t trie_state_t;\n\n')
+  else:
+    raise AssertionError('Too many states: %i' % len(nodes))
+
+  out.write('static const trie_state_t trie_start = %i;\n\n'
+            % node_to_id[root_node])
 
   accept_types = set(node.accept for node in nodes
                      if node.accept != False)
@@ -78,7 +86,7 @@ def Main():
       expr = ' || '.join('node_id == %i' % node_id for node_id in acceptors)
     else:
       expr = '0 /* These instructions are currently disallowed */'
-    out.write('static inline int trie_accepts_%s(int node_id) '
+    out.write('static inline int trie_accepts_%s(trie_state_t node_id) '
               '{\n  return %s;\n}\n\n'
               % (accept_type, expr))
 

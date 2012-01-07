@@ -167,14 +167,15 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
       # %esi/%edi are missing from headings in table in doc.
       for base_reg, base_regname in GetExtendedRegs(rex_b, regs64):
         # XXX: NaCl constraint
-        if base_regname not in nacl_base_regs:
+        if rm_size != 'lea_mem' and base_regname not in nacl_base_regs:
           continue
         labels = []
         if index_regname == 'riz' and base_reg == 4 and scale == 0:
           index_result = ''
         else:
           index_result = '%s*%s' % (index_regname, 1 << scale)
-          labels.append(('requires_zeroextend', index_reg + (rex_x << 3)))
+          if rm_size != 'lea_mem':
+            labels.append(('requires_zeroextend', index_reg + (rex_x << 3)))
         if base_reg == 5 and mod == 0:
           base_regname = ''
           extra = 'VALUE32'
@@ -216,7 +217,7 @@ def ModRMMem(rex_x, rex_b, rm_size, tail):
                                   (2, 4, 'VALUE32')):
     for reg2, regname2 in GetExtendedRegs(rex_b, regs64):
       # XXX: NaCl constraint
-      if regname2 not in nacl_base_regs:
+      if rm_size != 'lea_mem' and regname2 not in nacl_base_regs:
         continue
       if reg2 == 4:
         # %esp is not accepted in this position.
@@ -856,9 +857,9 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   for cond_num, cond_name in enumerate(cond_codes):
     Add(Byte(0x70 + cond_num), 'j' + cond_name, [('jump_dest', 8)])
 
-  # AddPair(0x84, 'test', ['rm', 'reg'])
-  # AddPair(0x86, 'xchg', ['rm', 'reg'])
-  # AddLW(0x8d, 'lea', ['reg', 'lea_mem'])
+  AddPair(0x84, 'test', ['rm', 'reg'])
+  AddPair(0x86, 'xchg', ['rm', 'reg'])
+  AddLW(0x8d, 'lea', ['reg', 'lea_mem'])
   # Group 1a just contains 'pop'.
   AddLWPushPop(0x8f, 'pop', ['rm'], modrm_opcode=0)
 

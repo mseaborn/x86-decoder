@@ -77,7 +77,7 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
     /* Process an instruction bundle. */
     uint32_t mask = 0;
     int bundle_offset = 0;
-    int state = trie_start;
+    trie_state_t state = trie_start;
     while (bundle_offset < bundle_size) {
       state = trie_lookup(state, *ptr);
       if (state == 0) {
@@ -126,7 +126,7 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
            don't expect to see the mask instruction 'and $~31, %reg'
            on its own very often. */
         int bundle_offset2 = bundle_offset;
-        int state2 = state;
+        trie_state_t state2 = state;
         uint8_t *ptr2 = ptr;
         while (bundle_offset2 < bundle_size) {
           state2 = trie_lookup(state2, *ptr2);
