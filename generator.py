@@ -1644,7 +1644,7 @@ def WriteInstructionList(filename, trie):
     suffix = ''
     for key in ('requires_fixup', 'requires_zeroextend'):
       if key in labels:
-        suffix = ' {%s:%s}' % (key, labels[key])
+        suffix += ' {%s:%s}' % (key, labels[key])
     fh.write('%s:%s%s\n' % (' '.join(bytes), InstrFromLabels(labels), suffix))
   fh.close()
 
