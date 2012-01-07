@@ -558,7 +558,7 @@ def CoerceKind(kind):
   if isinstance(kind, str):
     return {"kind": kind}
   else:
-    assert isinstance(kind, dict)
+    assert isinstance(kind, dict), kind
     return kind
 
 
@@ -572,12 +572,13 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   top_nodes = []
 
   def Add(bytes, instr_name, args, modrm_opcode=None, data16=False):
+    args = [(CoerceKind(kind), size) for kind, size in args]
     if lockable_only:
       if instr_name not in lock_whitelist:
         return
-      dest_kind = args[0][0]
+      dest_kind = args[0][0]['kind']
       if dest_kind != 'rm':
-        assert dest_kind in ('reg', '*ax')
+        assert dest_kind in ('reg', '*ax'), dest_kind
         return
     bytes = bytes.split()
     if nacl_mode:
@@ -613,8 +614,13 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     def SimpleArg(arg):
       out_args.append((False, arg))
 
+    if instr_name in ('mov', 'add', 'sub'):
+      # Mark that the first operand can be zero-extended by the operation.
+      arg = args[0][0].copy()
+      arg['canzeroextend'] = True
+      args = [(arg, args[0][1])] + args[1:]
+
     for kind_info, size in args:
-      kind_info = CoerceKind(kind_info)
       kind = kind_info['kind']
       if kind == 'imm':
         # We can have multiple immediates.  Needed for 'insertq'.
@@ -883,7 +889,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # Add('9b', 'fwait', [])
   # Add('9e', 'sahf', [])
   # Add('9f', 'lahf', [])
-  # Add('f4', 'hlt', [])
+  Add('f4', 'hlt', [])
 
   # if not nacl_mode:
   #   Add('27', 'daa', [])
@@ -962,8 +968,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
   #   AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
 
-  AddPair(0x88, 'mov', [{'kind': 'rm', 'canzeroextend': True}, 'reg'])
-  AddPair(0x8a, 'mov', [{'kind': 'reg', 'canzeroextend': True}, 'rm'])
+  AddPair(0x88, 'mov', ['rm', 'reg'])
+  AddPair(0x8a, 'mov', ['reg', 'rm'])
   AddPair(0xc6, 'mov', ['rm', 'imm'], modrm_opcode=0) # Group 11
   AddPair(0xa0, 'mov', ['*ax', 'addr'])
   AddPair(0xa2, 'mov', ['addr', '*ax'])
