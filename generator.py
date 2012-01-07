@@ -872,14 +872,22 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   if reg_num != 0:
   #     AddLW(0x90 + reg_num, 'xchg', [('fixreg', reg_num), '*ax'])
 
-  # # "Convert word to long".  Sign-extends %ax into %eax.
-  # Add('98', 'cwde', [])
-  # # "Convert byte to word".  Sign-extends %al into %ax.
-  # Add('66 98', 'cbw', [])
-  # # "Convert long to double long".  Fills %edx with the top bit of %eax.
-  # Add('99', 'cdq', [])
-  # # "Convert word to double word".  Fills %dx with the top bit of %ax.
-  # Add('66 99', 'cwd', [])
+  if rex_w:
+    # "Convert long to quad".  Sign-extends %ax into %eax.
+    Add('98', 'cdqe', [])
+  else:
+    # "Convert word to long".  Sign-extends %ax into %eax.
+    Add('98', 'cwde', [])
+    # "Convert byte to word".  Sign-extends %al into %ax.
+    Add('66 98', 'cbw', [])
+  if rex_w:
+    # "Convert quad to double quad".  Fills %rdx with the top bit of %rax.
+    Add('99', 'cqo', [])
+  else:
+    # "Convert long to double long".  Fills %edx with the top bit of %eax.
+    Add('99', 'cdq', [])
+    # "Convert word to double word".  Fills %dx with the top bit of %ax.
+    Add('66 99', 'cwd', [])
   # # Note that assemblers and disassemblers treat 'fwait' as a prefix
   # # such that 'fwait; fnXXX' is a shorthand for 'fXXX'.  (For example,
   # # 'fwait; fnstenv ARG' can be written as 'fstenv ARG'.)  This might
