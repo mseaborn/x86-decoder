@@ -427,24 +427,42 @@ def FlattenTrie(node, bytes=[], labels=[]):
         yield result
 
 
+@Memoize
+def StackFixup(reg):
+  # This is the fixup instruction "addq %r15, %esp/%ebp".
+  assert reg in (4, 5)
+  return TrieOfList(map(Byte, [0x4c, 0x01, 0xf8 | reg]), trie.AcceptNode)
+
+
 # Convert from a transducer (with labels) to an acceptor (no labels).
 # Strip all labels, converting relative_jump labels into accept states.
 @Memoize
-def ConvertToDfa(node, accept_type='normal_inst'):
+def ConvertToDfaRec(node, accept_type, replace):
   if isinstance(node, DftLabel):
     if node.key == 'relative_jump':
       assert accept_type == 'normal_inst'
       accept_type = 'jump_rel%i' % node.value
-    return ConvertToDfa(node.next, accept_type)
+    elif node.key == 'requires_fixup':
+      assert accept_type == 'normal_inst'
+      accept_type = 'replace'
+      replace = StackFixup(node.value)
+    return ConvertToDfaRec(node.next, accept_type, replace)
   else:
     assert node.accept in (True, False)
     if node.accept:
+      if accept_type == 'replace':
+        assert len(node.children) == 0
+        return ConvertToDfa(replace)
       accept = accept_type
     else:
       accept = False
-    return trie.MakeInterned(dict((key, ConvertToDfa(value, accept_type))
-                                  for key, value in node.children.iteritems()),
-                             accept)
+    return trie.MakeInterned(
+        dict((key, ConvertToDfaRec(value, accept_type, replace))
+             for key, value in node.children.iteritems()),
+        accept)
+
+def ConvertToDfa(node):
+  return ConvertToDfaRec(node, 'normal_inst', None)
 
 
 # Expand wildcard bytes.  This has two benefits:

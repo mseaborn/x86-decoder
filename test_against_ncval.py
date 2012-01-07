@@ -37,6 +37,7 @@ def Main():
   for bytes, label_map in GetInstructions():
     if 'requires_fixup' in label_map:
       # Add the fixup:  "add %r15, %esp/%ebp"
+      # TODO: Get this from the DFA instead of adding it here.
       reg = label_map['requires_fixup']
       assert reg in (4, 5)
       bytes = bytes + map(Byte, [0x4c, 0x01, 0xf8 | reg])
