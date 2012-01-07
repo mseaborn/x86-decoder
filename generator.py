@@ -813,19 +813,19 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     # imm8).
     AddLW(0x83, instr, ['rm', 'imm8'], modrm_opcode=arith_opcode)
 
-  # # Group 2: shift instructions
-  # for instr, modrm_opcode in [('rol', 0),
-  #                             ('ror', 1),
-  #                             ('rcl', 2),
-  #                             ('rcr', 3),
-  #                             ('shl', 4),
-  #                             ('shr', 5),
-  #                             # 6 is absent.
-  #                             ('sar', 7),
-  #                             ]:
-  #   AddPair(0xc0, instr, ['rm', 'imm8'], modrm_opcode=modrm_opcode)
-  #   AddPair(0xd0, instr, ['rm', '1'], modrm_opcode=modrm_opcode)
-  #   AddPair(0xd2, instr, ['rm', 'cl'], modrm_opcode=modrm_opcode)
+  # Group 2: shift instructions
+  for instr, modrm_opcode in [('rol', 0),
+                              ('ror', 1),
+                              ('rcl', 2),
+                              ('rcr', 3),
+                              ('shl', 4),
+                              ('shr', 5),
+                              # 6 is absent.
+                              ('sar', 7),
+                              ]:
+    AddPair(0xc0, instr, ['rm', 'imm8'], modrm_opcode=modrm_opcode)
+    AddPair(0xd0, instr, ['rm', '1'], modrm_opcode=modrm_opcode)
+    AddPair(0xd2, instr, ['rm', 'cl'], modrm_opcode=modrm_opcode)
 
   for reg_num in range(8):
     # Not for x86-64.  These bytes are used for the REX prefixes instead.
