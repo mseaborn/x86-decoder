@@ -63,8 +63,14 @@ def RegsBySize(has_rex, size):
 
 def GetExtendedRegs(top_bit, reglist):
   assert top_bit in (0, 1)
+  assert len(reglist) in (8, 16)
+  if len(reglist) == 16:
+    reg_offset = top_bit << 3
+  else:
+    # This is used for MMX/x87 registers.
+    reg_offset = 0
   for reg in xrange(8):
-    yield reg, reglist[reg + (top_bit << 3)]
+    yield reg, reglist[reg + reg_offset]
 
 mem_sizes = {
   64: 'QWORD PTR ',
@@ -1040,19 +1046,19 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # Add('0f 18', 'prefetcht1', [('mem', 8)], modrm_opcode=2)
   # Add('0f 18', 'prefetcht2', [('mem', 8)], modrm_opcode=3)
 
-  # Add('f3 0f 10', 'movss', [('reg', 'xmm'), ('rm', 'xmm32')])
-  # Add('f3 0f 11', 'movss', [('rm', 'xmm32'), ('reg', 'xmm')])
-  # Add('f3 0f 12', 'movsldup', [('reg', 'xmm'), ('rm', 'xmm')])
-  # Add('f3 0f 16', 'movshdup', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('f3 0f 10', 'movss', [('reg', 'xmm'), ('rm', 'xmm32')])
+  Add('f3 0f 11', 'movss', [('rm', 'xmm32'), ('reg', 'xmm')])
+  Add('f3 0f 12', 'movsldup', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('f3 0f 16', 'movshdup', [('reg', 'xmm'), ('rm', 'xmm')])
 
-  # Add('66 0f 10', 'movupd', [('reg', 'xmm'), ('rm', 'xmm')])
-  # Add('66 0f 11', 'movupd', [('rm', 'xmm'), ('reg', 'xmm')])
-  # Add('66 0f 12', 'movlpd', [('reg', 'xmm'), ('mem', 64)])
-  # Add('66 0f 13', 'movlpd', [('mem', 64), ('reg', 'xmm')])
-  # Add('66 0f 14', 'unpcklpd', [('reg', 'xmm'), ('rm', 'xmm')])
-  # Add('66 0f 15', 'unpckhpd', [('reg', 'xmm'), ('rm', 'xmm')])
-  # Add('66 0f 16', 'movhpd', [('reg', 'xmm'), ('mem', 64)])
-  # Add('66 0f 17', 'movhpd', [('mem', 64), ('reg', 'xmm')])
+  Add('66 0f 10', 'movupd', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('66 0f 11', 'movupd', [('rm', 'xmm'), ('reg', 'xmm')])
+  Add('66 0f 12', 'movlpd', [('reg', 'xmm'), ('mem', 64)])
+  Add('66 0f 13', 'movlpd', [('mem', 64), ('reg', 'xmm')])
+  Add('66 0f 14', 'unpcklpd', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('66 0f 15', 'unpckhpd', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('66 0f 16', 'movhpd', [('reg', 'xmm'), ('mem', 64)])
+  Add('66 0f 17', 'movhpd', [('mem', 64), ('reg', 'xmm')])
 
   Add('f2 0f 10', 'movsd', [('reg', 'xmm'), ('rm', 'xmm64')])
   Add('f2 0f 11', 'movsd', [('rm', 'xmm64'), ('reg', 'xmm')])
@@ -1067,10 +1073,10 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddForm('f3 0f 2a', 'cvtsi2ss', 'Vss Ed') # Ed/q
   # AddForm('66 0f 2a', 'cvtpi2pd', 'Vpd Qq')
   # AddForm('f2 0f 2a', 'cvtsi2sd', 'Vsd Ed') # Ed/q
-  # AddForm('0f 2b', 'movntps', 'Mdq Vps')
-  # AddForm('f3 0f 2b', 'movntss', 'Md Vss')
-  # AddForm('66 0f 2b', 'movntpd', 'Mdq Vpd')
-  # AddForm('f2 0f 2b', 'movntsd', 'Mq Vsd')
+  AddForm('0f 2b', 'movntps', 'Mdq Vps')
+  AddForm('f3 0f 2b', 'movntss', 'Md Vss')
+  AddForm('66 0f 2b', 'movntpd', 'Mdq Vpd')
+  AddForm('f2 0f 2b', 'movntsd', 'Mq Vsd')
   # # binutils correctly disassembles 'cvttps2pi' with 'QWORD PTR', but
   # # the assembler wrongly only accepts 'XMMWORD PTR'.
   # # The AMD manual has 'Pq Wps' for 'cvttps2pi', but 'W' is wrong (it
@@ -1139,15 +1145,15 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddForm('66 0f 5b', 'cvtps2dq', 'Vdq Wps')
   # # 'f3 0f 5b' is invalid.
 
-  # # MMX
-  # AddForm('0f 60', 'punpcklbw', 'Pq Qd')
-  # AddForm('0f 61', 'punpcklwd', 'Pq Qd')
-  # AddForm('0f 62', 'punpckldq', 'Pq Qd')
-  # AddForm('0f 63', 'packsswb', 'Pq Qq')
-  # AddForm('0f 64', 'pcmpgtb', 'Pq Qq')
-  # AddForm('0f 65', 'pcmpgtw', 'Pq Qq')
-  # AddForm('0f 66', 'pcmpgtd', 'Pq Qq')
-  # AddForm('0f 67', 'packuswb', 'Pq Qq')
+  # MMX
+  AddForm('0f 60', 'punpcklbw', 'Pq Qd')
+  AddForm('0f 61', 'punpcklwd', 'Pq Qd')
+  AddForm('0f 62', 'punpckldq', 'Pq Qd')
+  AddForm('0f 63', 'packsswb', 'Pq Qq')
+  AddForm('0f 64', 'pcmpgtb', 'Pq Qq')
+  AddForm('0f 65', 'pcmpgtw', 'Pq Qq')
+  AddForm('0f 66', 'pcmpgtd', 'Pq Qq')
+  AddForm('0f 67', 'packuswb', 'Pq Qq')
 
   # # SSE
   # # The AMD manual says 'Wq' rather than 'Wdq' for the next three, but
