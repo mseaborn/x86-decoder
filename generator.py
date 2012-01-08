@@ -21,7 +21,7 @@ regs16 = ('ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di',
           'r8w', 'r9w', 'r10w', 'r11w', 'r12w', 'r13w', 'r14w', 'r15w')
 regs_x87 = ['st(%i)' % regnum for regnum in range(8)]
 regs_mmx = ['mm%i' % regnum for regnum in range(8)]
-regs_xmm = ['xmm%i' % regnum for regnum in range(8)]
+regs_xmm = ['xmm%i' % regnum for regnum in range(16)]
 
 # 8-bit registers accessible with no REX prefix.
 # These can be the low or high 8 bits of a 16-bit register.
@@ -530,7 +530,7 @@ lock_whitelist = set([
 
 def SplitPrefixes(bytes):
   index = 0
-  while bytes[index] == '66':
+  while bytes[index] in ('66', 'f2', 'f3'):
     index += 1
   return bytes[:index], bytes[index:]
 
@@ -1054,15 +1054,15 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # Add('66 0f 16', 'movhpd', [('reg', 'xmm'), ('mem', 64)])
   # Add('66 0f 17', 'movhpd', [('mem', 64), ('reg', 'xmm')])
 
-  # Add('f2 0f 10', 'movsd', [('reg', 'xmm'), ('rm', 'xmm64')])
-  # Add('f2 0f 11', 'movsd', [('rm', 'xmm64'), ('reg', 'xmm')])
-  # Add('f2 0f 12', 'movddup', [('reg', 'xmm'), ('rm', 'xmm64')])
+  Add('f2 0f 10', 'movsd', [('reg', 'xmm'), ('rm', 'xmm64')])
+  Add('f2 0f 11', 'movsd', [('rm', 'xmm64'), ('reg', 'xmm')])
+  Add('f2 0f 12', 'movddup', [('reg', 'xmm'), ('rm', 'xmm64')])
 
-  # # Skip 0f 2x ('mov' on control registers)
-  # AddForm('0f 28', 'movaps', 'Vps Wps')
-  # AddForm('0f 29', 'movaps', 'Wps Vps')
-  # AddForm('66 0f 28', 'movapd', 'Vpd Wpd')
-  # AddForm('66 0f 29', 'movapd', 'Wpd Vpd')
+  # Skip 0f 2x ('mov' on control registers)
+  AddForm('0f 28', 'movaps', 'Vps Wps')
+  AddForm('0f 29', 'movaps', 'Wps Vps')
+  AddForm('66 0f 28', 'movapd', 'Vpd Wpd')
+  AddForm('66 0f 29', 'movapd', 'Wpd Vpd')
   # AddForm('0f 2a', 'cvtpi2ps', 'Vps Qq')
   # AddForm('f3 0f 2a', 'cvtsi2ss', 'Vss Ed') # Ed/q
   # AddForm('66 0f 2a', 'cvtpi2pd', 'Vpd Qq')
@@ -1084,12 +1084,12 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddForm('f3 0f 2d', 'cvtss2si', 'Gd Wss') # Gd/q
   # AddForm('66 0f 2d', 'cvtpd2pi', 'Pq Wpd')
   # AddForm('f2 0f 2d', 'cvtsd2si', 'Gd Wsd') # Gd/q
-  # AddForm('0f 2e', 'ucomiss', 'Vss Wss')
-  # AddForm('66 0f 2e', 'ucomisd', 'Vsd Wsd')
-  # # The AMD manual uses 'Vps Wps', but 'ps' is not correct because
-  # # this writes to a 32-bit memory location.
-  # Add('0f 2f', 'comiss', [('reg', 'xmm'), ('rm', 'xmm32')])
-  # AddForm('66 0f 2f', 'comisd', 'Vpd Wsd')
+  AddForm('0f 2e', 'ucomiss', 'Vss Wss')
+  AddForm('66 0f 2e', 'ucomisd', 'Vsd Wsd')
+  # The AMD manual uses 'Vps Wps', but 'ps' is not correct because
+  # this writes to a 32-bit memory location.
+  Add('0f 2f', 'comiss', [('reg', 'xmm'), ('rm', 'xmm32')])
+  AddForm('66 0f 2f', 'comisd', 'Vpd Wsd')
 
   # Add('0f 31', 'rdtsc', [])
   # if not nacl_mode:
@@ -1196,7 +1196,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddForm('66 0f 7d', 'hsubpd', 'Vpd Wpd')
   # AddForm('f2 0f 7d', 'hsubps', 'Vps Wps')
   # AddForm('0f 7e', 'movd', 'Ed Pd') # Ed/q Pd/q
-  # AddForm('f3 0f 7e', 'movq', 'Vq Wq')
+  AddForm('f3 0f 7e', 'movq', 'Vq Wq')
   # AddForm('66 0f 7e', 'movd', 'Ed Vd') # Ed/q Vd/q
   # AddForm('0f 7f', 'movq', 'Qq Pq')
   # AddForm('f3 0f 7f', 'movdqu', 'Wdq Vdq')
