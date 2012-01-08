@@ -1689,6 +1689,15 @@ def SandboxedJumps():
   yield Munge('66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
   yield Munge('66 66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
 
+  # TODO: Add 'cmps' etc.
+  yield Munge(
+      '89 f6 '        # mov esi, esi
+      '49 8d 34 37 '  # lea rsi, [r15+rsi*1]
+      '89 ff '        # mov edi, edi
+      '49 8d 3c 3f '  # lea rdi, [r15+rdi*1]
+      'f3 a4'         # rep movs BYTE PTR es:[rdi], BYTE PTR ds:[rsi]
+      )
+
 
 def MergeAcceptTypes(accept_types):
   if accept_types == set(['normal_inst', False]):
