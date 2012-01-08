@@ -533,6 +533,20 @@ lock_whitelist = set([
     'neg', 'not', 'or', 'sbb', 'sub',
     'xadd', 'xchg', 'xor'])
 
+# Instructions which we rely upon to zero the top 32 bits of the
+# destination register.
+zeroextend_whitelist = set([
+    'mov',
+    'movd', 'movsx', 'movsxd', 'movzx',
+    'lea',
+    'add', 'sub', 'xadd',
+    # TODO: Original validator seems to reject "rex imul %esp" but not
+    # "imul %esp".  Investigate that.
+    # 'imul',
+    'and', 'or', 'xor',
+    'xchg',
+    'neg', 'not'])
+
 
 def SplitPrefixes(bytes):
   index = 0
@@ -634,7 +648,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     def SimpleArg(arg):
       out_args.append((False, arg))
 
-    if instr_name in ('mov', 'add', 'sub'):
+    if instr_name in zeroextend_whitelist:
       # Mark that the first operand can be zero-extended by the operation.
       arg = args[0][0].copy()
       arg['canzeroextend'] = True
