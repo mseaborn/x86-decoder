@@ -1028,10 +1028,10 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   Add('0f 01 f9', 'rdtscp', [])
   # Add('0f 0e', 'femms', [])
   # # TODO: 0f 0f (3DNow)
-  # # Group P: prefetches
-  # # TODO: Other modrm_opcode values for prefetches might be allowed.
-  # Add('0f 0d', 'prefetch', [('mem', 8)], modrm_opcode=0)
-  # Add('0f 0d', 'prefetchw', [('mem', 8)], modrm_opcode=1)
+  # Group P: prefetches
+  # TODO: Other modrm_opcode values for prefetches might be allowed.
+  Add('0f 0d', 'prefetch', [('mem', 8)], modrm_opcode=0)
+  Add('0f 0d', 'prefetchw', [('mem', 8)], modrm_opcode=1)
 
   # Add('0f 10', 'movups', [('reg', 'xmm'), ('rm', 'xmm')])
   # Add('0f 11', 'movups', [('rm', 'xmm'), ('reg', 'xmm')])
@@ -1043,11 +1043,11 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # Add('0f 16', 'movhps', [('reg', 'xmm'), ('mem', 64)])
   # Add('0f 16', 'movlhps', [('reg', 'xmm'), ('reg2', 'xmm')])
   # Add('0f 17', 'movhps', [('mem', 64), ('reg', 'xmm')])
-  # # Group 16
-  # Add('0f 18', 'prefetchnta', [('mem', 8)], modrm_opcode=0)
-  # Add('0f 18', 'prefetcht0', [('mem', 8)], modrm_opcode=1)
-  # Add('0f 18', 'prefetcht1', [('mem', 8)], modrm_opcode=2)
-  # Add('0f 18', 'prefetcht2', [('mem', 8)], modrm_opcode=3)
+  # Group 16
+  Add('0f 18', 'prefetchnta', [('mem', 8)], modrm_opcode=0)
+  Add('0f 18', 'prefetcht0', [('mem', 8)], modrm_opcode=1)
+  Add('0f 18', 'prefetcht1', [('mem', 8)], modrm_opcode=2)
+  Add('0f 18', 'prefetcht2', [('mem', 8)], modrm_opcode=3)
 
   Add('f3 0f 10', 'movss', [('reg', 'xmm'), ('rm', 'xmm32')])
   Add('f3 0f 11', 'movss', [('rm', 'xmm32'), ('reg', 'xmm')])
@@ -1313,13 +1313,13 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   # although objdump decodes such instructions.
   #   Add('0f ' + Byte(0xc8 + reg_num), 'bswap', [(('fixreg', reg_num), 32)])
 
-  # AddForm('0f c2', 'cmpps', 'Vps Wps Ib')
-  # AddForm('f3 0f c2', 'cmpss', 'Vss Wss Ib')
-  # AddForm('66 0f c2', 'cmppd', 'Vpd Wpd Ib')
-  # AddForm('f2 0f c2', 'cmpsd', 'Vsd Wsd Ib')
-  # # binutils incorrectly disassembles 'movnti' with 'QWORD PTR', even
-  # # though the assembler only accepts 'DWORD PTR'.
-  # Add('0f c3', 'FIXME movnti', [('mem', 32), ('reg', 32)])
+  AddForm('0f c2', 'cmpps', 'Vps Wps Ib')
+  AddForm('f3 0f c2', 'cmpss', 'Vss Wss Ib')
+  AddForm('66 0f c2', 'cmppd', 'Vpd Wpd Ib')
+  AddForm('f2 0f c2', 'cmpsd', 'Vsd Wsd Ib')
+  # binutils incorrectly disassembles 'movnti' with 'QWORD PTR', even
+  # though the assembler only accepts 'DWORD PTR'.
+  Add('0f c3', 'FIXME movnti', [('mem', 32), ('reg', 32)])
   # # Even though pinsrw only uses the bottom 16 bits of the source
   # # register, it is written as using a 32-bit register.  The 2nd arg
   # # is 'mem16/reg32'.
