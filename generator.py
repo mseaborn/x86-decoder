@@ -1712,6 +1712,8 @@ def SandboxedJumps():
   yield Munge(string_mask + 'f3 a4')
   # rep movs QWORD PTR es:[rdi], QWORD PTR ds:[rsi]
   yield Munge(string_mask + 'f3 48 a5')
+  # repz cmps BYTE PTR ds:[rsi], BYTE PTR es:[rdi]
+  yield Munge(string_mask + 'f3 a6')
 
   string_mask = (
       '89 ff '        # mov edi, edi
