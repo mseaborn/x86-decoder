@@ -554,7 +554,9 @@ def GetRexRoot(**kwargs):
                                    rex_b=rex_bits & 1,
                                    **kwargs):
       prefixes, bytes = SplitPrefixes(bytes)
-      nodes.append(TrieOfList(prefixes + [Byte(0x40 | rex_bits)] + bytes, node))
+      nodes.append(TrieOfList(prefixes + [Byte(0x40 | rex_bits)],
+                              DftLabel('test_keep', rex_bits in (0, 7, 8, 0xf),
+                                       TrieOfList(bytes, node))))
   return MergeMany(nodes, NoMerge)
 
 
