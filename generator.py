@@ -608,6 +608,11 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   top_nodes = []
 
   def Add(bytes, instr_name, args, modrm_opcode=None, data16=False):
+    if instr_name == 'cmp':
+      # Mark all operands as read-only.
+      # TODO: Extend this to other instructions' operands.
+      args = [({'kind': kind, 'readonly': True}, size) for kind, size in args]
+
     args = [(CoerceKind(kind), size) for kind, size in args]
     if lockable_only:
       if instr_name not in lock_whitelist:
