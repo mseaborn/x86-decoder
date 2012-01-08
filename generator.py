@@ -97,7 +97,9 @@ cond_codes = (
 form_map = {
     'Ib': ('imm', 8),
     'Gd': ('reg', 32),
+    'Gq': ('reg', 64),
     'Ed': ('rm', 32),
+    'Eq': ('rm', 64),
     'Md': ('mem', 32),
     'Mq': ('mem', 64),
     'Mdq': ('mem', 'xmm'),
@@ -1059,16 +1061,16 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   Add('0f 0d', 'prefetch', [('mem', 8)], modrm_opcode=0)
   Add('0f 0d', 'prefetchw', [('mem', 8)], modrm_opcode=1)
 
-  # Add('0f 10', 'movups', [('reg', 'xmm'), ('rm', 'xmm')])
-  # Add('0f 11', 'movups', [('rm', 'xmm'), ('reg', 'xmm')])
-  # Add('0f 12', 'movlps', [('reg', 'xmm'), ('mem', 64)])
-  # Add('0f 12', 'movhlps', [('reg', 'xmm'), ('reg2', 'xmm')])
-  # Add('0f 13', 'movlps', [('mem', 64), ('reg', 'xmm')])
-  # Add('0f 14', 'unpcklps', [('reg', 'xmm'), ('rm', 'xmm')])
-  # Add('0f 15', 'unpckhps', [('reg', 'xmm'), ('rm', 'xmm')])
-  # Add('0f 16', 'movhps', [('reg', 'xmm'), ('mem', 64)])
-  # Add('0f 16', 'movlhps', [('reg', 'xmm'), ('reg2', 'xmm')])
-  # Add('0f 17', 'movhps', [('mem', 64), ('reg', 'xmm')])
+  Add('0f 10', 'movups', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('0f 11', 'movups', [('rm', 'xmm'), ('reg', 'xmm')])
+  Add('0f 12', 'movlps', [('reg', 'xmm'), ('mem', 64)])
+  Add('0f 12', 'movhlps', [('reg', 'xmm'), ('reg2', 'xmm')])
+  Add('0f 13', 'movlps', [('mem', 64), ('reg', 'xmm')])
+  Add('0f 14', 'unpcklps', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('0f 15', 'unpckhps', [('reg', 'xmm'), ('rm', 'xmm')])
+  Add('0f 16', 'movhps', [('reg', 'xmm'), ('mem', 64)])
+  Add('0f 16', 'movlhps', [('reg', 'xmm'), ('reg2', 'xmm')])
+  Add('0f 17', 'movhps', [('mem', 64), ('reg', 'xmm')])
   # Group 16
   Add('0f 18', 'prefetchnta', [('mem', 8)], modrm_opcode=0)
   Add('0f 18', 'prefetcht0', [('mem', 8)], modrm_opcode=1)
@@ -1196,19 +1198,24 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddForm('66 0f 66', 'pcmpgtd', 'Vdq Wdq')
   # AddForm('66 0f 67', 'packuswb', 'Vdq Wdq')
 
-  # AddSSEMMXPair('0f 68', 'punpckhbw')
-  # AddSSEMMXPair('0f 69', 'punpckhwd')
-  # AddSSEMMXPair('0f 6a', 'punpckhdq')
-  # AddSSEMMXPair('0f 6b', 'packssdw')
-  # # The AMD manual says 'Wq' rather than 'Wdq' for punpcklqdq and
-  # # punpckhqdq, but it seems to be wrong.
-  # AddForm('66 0f 6c', 'punpcklqdq', 'Vdq Wdq')
-  # AddForm('66 0f 6d', 'punpckhqdq', 'Vdq Wdq')
-  # AddForm('0f 6e', 'movd', 'Pq Ed') # Ed/q
-  # AddForm('66 0f 6e', 'movd', 'Vdq Ed') # Ed/q
-  # AddForm('0f 6f', 'movq', 'Pq Qq')
-  # AddForm('f3 0f 6f', 'movdqu', 'Vdq Wdq')
-  # AddForm('66 0f 6f', 'movdqa', 'Vdq Wdq')
+  AddSSEMMXPair('0f 68', 'punpckhbw')
+  AddSSEMMXPair('0f 69', 'punpckhwd')
+  AddSSEMMXPair('0f 6a', 'punpckhdq')
+  AddSSEMMXPair('0f 6b', 'packssdw')
+  # The AMD manual says 'Wq' rather than 'Wdq' for punpcklqdq and
+  # punpckhqdq, but it seems to be wrong.
+  AddForm('66 0f 6c', 'punpcklqdq', 'Vdq Wdq')
+  AddForm('66 0f 6d', 'punpckhqdq', 'Vdq Wdq')
+  # d/q switch
+  if rex_w:
+    AddForm('0f 6e', 'movq', 'Pq Eq')
+    AddForm('66 0f 6e', 'movq', 'Vdq Eq')
+  else:
+    AddForm('0f 6e', 'movd', 'Pq Ed')
+    AddForm('66 0f 6e', 'movd', 'Vdq Ed')
+  AddForm('0f 6f', 'movq', 'Pq Qq')
+  AddForm('f3 0f 6f', 'movdqu', 'Vdq Wdq')
+  AddForm('66 0f 6f', 'movdqa', 'Vdq Wdq')
 
   # # The AMD manual says 'Wq' rather than 'Wdq' for pshufhw and
   # # pshuflw, but it seems to be wrong.
@@ -1230,9 +1237,13 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddForm('f2 0f 7c', 'haddps', 'Vps Wps')
   # AddForm('66 0f 7d', 'hsubpd', 'Vpd Wpd')
   # AddForm('f2 0f 7d', 'hsubps', 'Vps Wps')
-  # AddForm('0f 7e', 'movd', 'Ed Pd') # Ed/q Pd/q
   AddForm('f3 0f 7e', 'movq', 'Vq Wq')
-  # AddForm('66 0f 7e', 'movd', 'Ed Vd') # Ed/q Vd/q
+  if rex_w:
+    AddForm('0f 7e', 'movq', 'Eq Pq') # Ed/q Pd/q
+    AddForm('66 0f 7e', 'movq', 'Eq Vq') # Ed/q Vd/q
+  else:
+    AddForm('0f 7e', 'movd', 'Ed Pd') # Ed/q Pd/q
+    AddForm('66 0f 7e', 'movd', 'Ed Vd') # Ed/q Vd/q
   # AddForm('0f 7f', 'movq', 'Qq Pq')
   # AddForm('f3 0f 7f', 'movdqu', 'Wdq Vdq')
   # AddForm('66 0f 7f', 'movdqa', 'Wdq Vdq')
