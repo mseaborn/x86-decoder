@@ -1689,14 +1689,26 @@ def SandboxedJumps():
   yield Munge('66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
   yield Munge('66 66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
 
-  # TODO: Add 'cmps' etc.
-  yield Munge(
+  # TODO: Do the full set of string operations, in a non-ad-hoc way.
+  string_mask = (
       '89 f6 '        # mov esi, esi
       '49 8d 34 37 '  # lea rsi, [r15+rsi*1]
       '89 ff '        # mov edi, edi
       '49 8d 3c 3f '  # lea rdi, [r15+rdi*1]
-      'f3 a4'         # rep movs BYTE PTR es:[rdi], BYTE PTR ds:[rsi]
       )
+  # rep movs BYTE PTR es:[rdi], BYTE PTR ds:[rsi]
+  yield Munge(string_mask + 'f3 a4')
+  # rep movs QWORD PTR es:[rdi], QWORD PTR ds:[rsi]
+  yield Munge(string_mask + 'f3 48 a5')
+
+  string_mask = (
+      '89 ff '        # mov edi, edi
+      '49 8d 3c 3f '  # lea rdi, [r15+rdi*1]
+      )
+  # rep stos BYTE PTR es:[rdi], al
+  yield Munge(string_mask + 'f3 aa')
+  # rep stos QWORD PTR es:[rdi], rax
+  yield Munge(string_mask + 'f3 48 ab')
 
 
 def MergeAcceptTypes(accept_types):
