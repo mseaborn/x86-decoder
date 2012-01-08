@@ -1740,6 +1740,8 @@ def SandboxedJumps():
       )
   # rep movs BYTE PTR es:[rdi], BYTE PTR ds:[rsi]
   yield Munge(string_mask + 'f3 a4')
+  # rep movs DWORD PTR es:[rdi], DWORD PTR ds:[rsi]
+  yield Munge(string_mask + 'f3 a5')
   # rep movs QWORD PTR es:[rdi], QWORD PTR ds:[rsi]
   yield Munge(string_mask + 'f3 48 a5')
   # repz cmps BYTE PTR ds:[rsi], BYTE PTR es:[rdi]
@@ -1751,8 +1753,12 @@ def SandboxedJumps():
       )
   # rep stos BYTE PTR es:[rdi], al
   yield Munge(string_mask + 'f3 aa')
+  # rep stos DWORD PTR es:[rdi], al
+  yield Munge(string_mask + 'f3 ab')
   # rep stos QWORD PTR es:[rdi], rax
   yield Munge(string_mask + 'f3 48 ab')
+  # repnz scas al, BYTE PTR es:[rdi]
+  yield Munge(string_mask + 'f2 ae')
 
 
 def MergeAcceptTypes(accept_types):
