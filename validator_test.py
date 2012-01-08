@@ -140,6 +140,7 @@ TestCase(accept=True, asm='push %rax')
 TestCase(accept=True, asm='push %rbp')
 TestCase(accept=True, asm='push %rsp')
 TestCase(accept=True, asm='push %r15')
+TestCase(accept=True, asm='mov %rsp, %rax')
 # But write access is not.
 TestCase(accept=True, asm='pop %rax')
 TestCase(accept=False, asm='pop %rbp')

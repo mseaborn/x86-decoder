@@ -238,15 +238,15 @@ def ModRMMem(rex_x, rex_b, rm_size, tail):
 
 
 @Memoize
-def ModRMReg(has_rex, rex_b, rm_size, rm_canzeroextend, tail):
+def ModRMReg(has_rex, rex_b, rm_size, rm_attrs, tail):
   got = []
   mod = 3
   for reg2, regname2 in GetExtendedRegs(rex_b, RegsBySize(has_rex, rm_size)):
     # XXX: NaCl constraint
     labels = []
-    if rm_canzeroextend and regname2 in ('esp', 'ebp'):
+    if rm_attrs.canzeroextend and regname2 in ('esp', 'ebp'):
       labels.append(('requires_fixup', reg2))
-    elif regname2 in nacl_unwritable_reg:
+    elif not rm_attrs.readonly and regname2 in nacl_unwritable_reg:
       continue
     got.append((mod, reg2,
                 DftLabels(labels,
@@ -255,28 +255,27 @@ def ModRMReg(has_rex, rex_b, rm_size, rm_canzeroextend, tail):
   return got
 
 
-def ModRM1(has_rex, rex_x, rex_b, rm_size, rm_canzeroextend,
+def ModRM1(has_rex, rex_x, rex_b, rm_size, rm_attrs,
            rm_allow_reg, rm_allow_mem, tail):
   if rm_allow_mem:
     for result in ModRMMem(rex_x, rex_b, rm_size, tail):
       yield result
   if rm_allow_reg:
-    for result in ModRMReg(has_rex, rex_b, rm_size, rm_canzeroextend, tail):
+    for result in ModRMReg(has_rex, rex_b, rm_size, rm_attrs, tail):
       yield result
 
 
-def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, reg_canzeroextend,
-          rm_size, rm_canzeroextend, rm_allow_reg, rm_allow_mem, tail):
+def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, reg_attrs,
+          rm_size, rm_attrs, rm_allow_reg, rm_allow_mem, tail):
   for reg, regname in GetExtendedRegs(rex_r, RegsBySize(has_rex, reg_size)):
     # XXX: NaCl constraint
     labels = []
-    if reg_canzeroextend and regname in ('esp', 'ebp'):
+    if reg_attrs.canzeroextend and regname in ('esp', 'ebp'):
       labels.append(('requires_fixup', reg))
-    elif regname in nacl_unwritable_reg:
+    elif not reg_attrs.readonly and regname in nacl_unwritable_reg:
       continue
     for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
-                                  rm_canzeroextend,
-                                  rm_allow_reg, rm_allow_mem, tail):
+                                  rm_attrs, rm_allow_reg, rm_allow_mem, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
                        DftLabels(labels,
                                  DftLabel('test_keep',
@@ -287,12 +286,11 @@ def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, reg_canzeroextend,
 # Although the node this function returns won't get reused, the child
 # nodes do get reused, which makes this worth memoizing.
 @Memoize
-def ModRMSingleArg(has_rex, rex_x, rex_b, rm_size, rm_canzeroextend,
+def ModRMSingleArg(has_rex, rex_x, rex_b, rm_size, rm_attrs,
                    rm_allow_reg, rm_allow_mem, opcode, tail):
   nodes = []
   for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
-                                rm_canzeroextend,
-                                rm_allow_reg, rm_allow_mem, tail):
+                                rm_attrs, rm_allow_reg, rm_allow_mem, tail):
     nodes.append(TrieOfList([Byte((mod << 6) | (opcode << 3) | reg2)], node))
   return MergeMany(nodes, NoMerge)
 
@@ -399,11 +397,10 @@ def ImmediateNode(immediate_size):
 
 
 @Memoize
-def ModRMNode(has_rex, rex_r, rex_x, rex_b, reg_size, reg_canzeroextend,
-              rm_size, rm_canzeroextend, rm_allow_reg, rm_allow_mem, tail):
-  nodes = list(ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, reg_canzeroextend,
-                     rm_size, rm_canzeroextend,
-                     rm_allow_reg, rm_allow_mem, tail))
+def ModRMNode(has_rex, rex_r, rex_x, rex_b, reg_size, reg_attrs,
+              rm_size, rm_attrs, rm_allow_reg, rm_allow_mem, tail):
+  nodes = list(ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, reg_attrs,
+                     rm_size, rm_attrs, rm_allow_reg, rm_allow_mem, tail))
   return MergeMany(nodes, NoMerge)
 
 
@@ -555,6 +552,20 @@ def GetRexRoot(**kwargs):
   return MergeMany(nodes, NoMerge)
 
 
+class OperandAttrs(object):
+  pass
+
+@Memoize
+def MakeInternedAttrs(readonly, canzeroextend):
+  attrs = OperandAttrs()
+  attrs.readonly = readonly
+  attrs.canzeroextend = canzeroextend
+  return attrs
+
+def AttrsFromKind(info):
+  return MakeInternedAttrs(info.get('readonly', False),
+                           info.get('canzeroextend', False))
+
 def CoerceKind(kind):
   if isinstance(kind, str):
     return {"kind": kind}
@@ -603,11 +614,11 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
 
     immediate_size = 0 # Size in bits
     rm_size = None
-    rm_canzeroextend = None
+    rm_attrs = None
     rm_allow_reg = not mem_access_only
     rm_allow_mem = True
     reg_size = None
-    reg_canzeroextend = None
+    reg_attrs = None
     out_args = []
     labels = []
     mem_access = False
@@ -630,7 +641,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
       elif kind == 'rm':
         assert rm_size is None
         rm_size = size
-        rm_canzeroextend = kind_info.get('canzeroextend', False)
+        rm_attrs = AttrsFromKind(kind_info)
         out_args.append((True, kind))
         mem_access = True
       elif kind == 'lea_mem':
@@ -656,7 +667,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
         # Register specified by the ModRM reg field.
         assert reg_size is None
         reg_size = size
-        reg_canzeroextend = kind_info.get('canzeroextend', False)
+        reg_attrs = AttrsFromKind(kind_info)
         out_args.append((True, kind))
       elif kind == 'addr':
         # XXX: NaCl constraint
@@ -698,15 +709,15 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     if rm_size is not None and reg_size is not None:
       assert modrm_opcode is None
       node = ModRMNode(has_rex, rex_r, rex_x, rex_b,
-                       reg_size, reg_canzeroextend,
-                       rm_size, rm_canzeroextend, rm_allow_reg, rm_allow_mem,
+                       reg_size, reg_attrs,
+                       rm_size, rm_attrs, rm_allow_reg, rm_allow_mem,
                        ImmediateNode(immediate_size))
       if not (rm_allow_reg and rm_allow_mem):
         node = PushLabels(labels, node)
         labels = []
     elif rm_size is not None and reg_size is None:
       assert modrm_opcode is not None
-      node = ModRMSingleArg(has_rex, rex_x, rex_b, rm_size, rm_canzeroextend,
+      node = ModRMSingleArg(has_rex, rex_x, rex_b, rm_size, rm_attrs,
                             rm_allow_reg, rm_allow_mem,
                             modrm_opcode, ImmediateNode(immediate_size))
       node = PushLabels(labels, node)
@@ -977,7 +988,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
   #   AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
 
-  AddPair(0x88, 'mov', ['rm', 'reg'])
+  AddPair(0x88, 'mov', ['rm', {'kind': 'reg', 'readonly': True}])
   AddPair(0x8a, 'mov', ['reg', 'rm'])
   AddPair(0xc6, 'mov', ['rm', 'imm'], modrm_opcode=0) # Group 11
   AddPair(0xa0, 'mov', ['*ax', 'addr'])
