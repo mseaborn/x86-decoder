@@ -810,6 +810,18 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     def MapArg(arg):
       if arg in form_map:
         return form_map[arg]
+      elif arg[1:] == 'd/q':
+        if arg[0] == 'E':
+          kind = 'rm'
+        elif arg[0] == 'G':
+          kind = 'reg'
+        else:
+          raise AssertionError('Bad d/q kind')
+        if rex_w:
+          size = 64
+        else:
+          size = 32
+        return (kind, size)
       else:
         return (form_position_map[arg[0]], form_size_map[arg[1:]])
     Add(bytes, instr_name, map(MapArg, format.split()),
@@ -1073,9 +1085,9 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddForm('66 0f 28', 'movapd', 'Vpd Wpd')
   AddForm('66 0f 29', 'movapd', 'Wpd Vpd')
   AddForm('0f 2a', 'cvtpi2ps', 'Vps Qq')
-  # AddForm('f3 0f 2a', 'cvtsi2ss', 'Vss Ed') # Ed/q
+  AddForm('f3 0f 2a', 'cvtsi2ss', 'Vss Ed/q')
   AddForm('66 0f 2a', 'cvtpi2pd', 'Vpd Qq')
-  # AddForm('f2 0f 2a', 'cvtsi2sd', 'Vsd Ed') # Ed/q
+  AddForm('f2 0f 2a', 'cvtsi2sd', 'Vsd Ed/q')
   AddForm('0f 2b', 'movntps', 'Mdq Vps')
   AddForm('f3 0f 2b', 'movntss', 'Md Vss')
   AddForm('66 0f 2b', 'movntpd', 'Mdq Vpd')
@@ -1086,13 +1098,13 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # should be an MMX register, not an XMM register) and 'ps' is wrong
   # (it should be 64-bit, not 128-bit).
   Add('0f 2c', 'FIXME cvttps2pi', [('reg', 'mmx'), ('rm', 'xmm64')])
-  # AddForm('f3 0f 2c', 'cvttss2si', 'Gd Wss') # Gd/q
+  AddForm('f3 0f 2c', 'cvttss2si', 'Gd/q Wss')
   AddForm('66 0f 2c', 'cvttpd2pi', 'Pq Wpd')
-  # AddForm('f2 0f 2c', 'cvttsd2si', 'Gd Wsd') # Gd/q
+  AddForm('f2 0f 2c', 'cvttsd2si', 'Gd/q Wsd')
   Add('0f 2d', 'cvtps2pi', [('reg', 'mmx'), ('rm', 'xmm64')])
-  # AddForm('f3 0f 2d', 'cvtss2si', 'Gd Wss') # Gd/q
+  AddForm('f3 0f 2d', 'cvtss2si', 'Gd/q Wss')
   AddForm('66 0f 2d', 'cvtpd2pi', 'Pq Wpd')
-  # AddForm('f2 0f 2d', 'cvtsd2si', 'Gd Wsd') # Gd/q
+  AddForm('f2 0f 2d', 'cvtsd2si', 'Gd/q Wsd')
   AddForm('0f 2e', 'ucomiss', 'Vss Wss')
   AddForm('66 0f 2e', 'ucomisd', 'Vsd Wsd')
   # The AMD manual uses 'Vps Wps', but 'ps' is not correct because
