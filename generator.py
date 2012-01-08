@@ -1258,13 +1258,26 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddLW2('0f bc', 'bsf', ['reg', 'rm'])
   # AddLW2('0f bd', 'bsr', ['reg', 'rm'])
 
-  # # Move with zero/sign extend.
-  # Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
-  # Add('0f b6', 'movzx', [('reg', 16), ('rm', 8)], data16=True)
-  # Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
-  # Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
-  # Add('0f be', 'movsx', [('reg', 16), ('rm', 8)], data16=True)
-  # Add('0f bf', 'movsx', [('reg', 32), ('rm', 16)])
+  # Move with zero/sign extend.
+  if rex_w:
+    Add('0f b6', 'movzx', [('reg', 64), ('rm', 8)])
+    Add('0f b7', 'movzx', [('reg', 64), ('rm', 16)])
+    Add('0f be', 'movsx', [('reg', 64), ('rm', 8)])
+    Add('0f bf', 'movsx', [('reg', 64), ('rm', 16)])
+  else:
+    Add('0f b6', 'movzx', [('reg', 32), ('rm', 8)])
+    Add('0f b6', 'movzx', [('reg', 16), ('rm', 8)], data16=True)
+    Add('0f b7', 'movzx', [('reg', 32), ('rm', 16)])
+    Add('0f be', 'movsx', [('reg', 32), ('rm', 8)])
+    Add('0f be', 'movsx', [('reg', 16), ('rm', 8)], data16=True)
+    Add('0f bf', 'movsx', [('reg', 32), ('rm', 16)])
+
+  # x86-64 only.  For x86-32, this opcode is used by 'arpl'.
+  # TODO: The original x86-64 validator accepts this without a REX.W
+  # prefix, although that is not very useful because then this
+  # zero-extends, which is the same as 'mov'.
+  if rex_w:
+    Add('63', 'movsxd', [('reg', 64), ('rm', 32)])
 
   # AddLW2('f3 0f b8', 'popcnt', ['reg', 'rm'])
   # AddLW2('f3 0f bd', 'lzcnt', ['reg', 'rm'])
