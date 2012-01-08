@@ -669,6 +669,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
         # 'rm' kind except that no memory access is allowed.
         assert rm_size is None
         rm_size = size
+        rm_attrs = AttrsFromKind(kind_info)
         rm_allow_mem = False
         out_args.append((True, 'rm'))
       elif kind == 'reg':
@@ -1071,26 +1072,26 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddForm('0f 29', 'movaps', 'Wps Vps')
   AddForm('66 0f 28', 'movapd', 'Vpd Wpd')
   AddForm('66 0f 29', 'movapd', 'Wpd Vpd')
-  # AddForm('0f 2a', 'cvtpi2ps', 'Vps Qq')
+  AddForm('0f 2a', 'cvtpi2ps', 'Vps Qq')
   # AddForm('f3 0f 2a', 'cvtsi2ss', 'Vss Ed') # Ed/q
-  # AddForm('66 0f 2a', 'cvtpi2pd', 'Vpd Qq')
+  AddForm('66 0f 2a', 'cvtpi2pd', 'Vpd Qq')
   # AddForm('f2 0f 2a', 'cvtsi2sd', 'Vsd Ed') # Ed/q
   AddForm('0f 2b', 'movntps', 'Mdq Vps')
   AddForm('f3 0f 2b', 'movntss', 'Md Vss')
   AddForm('66 0f 2b', 'movntpd', 'Mdq Vpd')
   AddForm('f2 0f 2b', 'movntsd', 'Mq Vsd')
-  # # binutils correctly disassembles 'cvttps2pi' with 'QWORD PTR', but
-  # # the assembler wrongly only accepts 'XMMWORD PTR'.
-  # # The AMD manual has 'Pq Wps' for 'cvttps2pi', but 'W' is wrong (it
-  # # should be an MMX register, not an XMM register) and 'ps' is wrong
-  # # (it should be 64-bit, not 128-bit).
-  # Add('0f 2c', 'FIXME cvttps2pi', [('reg', 'mmx'), ('rm', 'xmm64')])
+  # binutils correctly disassembles 'cvttps2pi' with 'QWORD PTR', but
+  # the assembler wrongly only accepts 'XMMWORD PTR'.
+  # The AMD manual has 'Pq Wps' for 'cvttps2pi', but 'W' is wrong (it
+  # should be an MMX register, not an XMM register) and 'ps' is wrong
+  # (it should be 64-bit, not 128-bit).
+  Add('0f 2c', 'FIXME cvttps2pi', [('reg', 'mmx'), ('rm', 'xmm64')])
   # AddForm('f3 0f 2c', 'cvttss2si', 'Gd Wss') # Gd/q
-  # AddForm('66 0f 2c', 'cvttpd2pi', 'Pq Wpd')
+  AddForm('66 0f 2c', 'cvttpd2pi', 'Pq Wpd')
   # AddForm('f2 0f 2c', 'cvttsd2si', 'Gd Wsd') # Gd/q
-  # Add('0f 2d', 'cvtps2pi', [('reg', 'mmx'), ('rm', 'xmm64')])
+  Add('0f 2d', 'cvtps2pi', [('reg', 'mmx'), ('rm', 'xmm64')])
   # AddForm('f3 0f 2d', 'cvtss2si', 'Gd Wss') # Gd/q
-  # AddForm('66 0f 2d', 'cvtpd2pi', 'Pq Wpd')
+  AddForm('66 0f 2d', 'cvtpd2pi', 'Pq Wpd')
   # AddForm('f2 0f 2d', 'cvtsd2si', 'Gd Wsd') # Gd/q
   AddForm('0f 2e', 'ucomiss', 'Vss Wss')
   AddForm('66 0f 2e', 'ucomisd', 'Vsd Wsd')
@@ -1108,44 +1109,44 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   Add('0f 35', 'sysexit', [])
 
   # AddForm('0f 50', 'movmskps', 'Gd Ups')
-  # AddForm('0f 51', 'sqrtps', 'Vps Wps')
-  # AddForm('0f 52', 'rsqrtps', 'Vps Rps')
-  # AddForm('0f 53', 'rcpps', 'Vps Wps')
-  # AddForm('0f 54', 'andps', 'Vps Wps')
-  # AddForm('0f 55', 'andnps', 'Vps Wps')
-  # AddForm('0f 56', 'orps', 'Vps Wps')
-  # AddForm('0f 57', 'xorps', 'Vps Wps')
-  # AddForm('f3 0f 51', 'sqrtss', 'Vss Wss')
-  # AddForm('f3 0f 52', 'rsqrtss', 'Vss Wss')
-  # AddForm('f3 0f 53', 'rcpss', 'Vss Wss')
+  AddForm('0f 51', 'sqrtps', 'Vps Wps')
+  AddForm('0f 52', 'rsqrtps', 'Vps Rps')
+  AddForm('0f 53', 'rcpps', 'Vps Wps')
+  AddForm('0f 54', 'andps', 'Vps Wps')
+  AddForm('0f 55', 'andnps', 'Vps Wps')
+  AddForm('0f 56', 'orps', 'Vps Wps')
+  AddForm('0f 57', 'xorps', 'Vps Wps')
+  AddForm('f3 0f 51', 'sqrtss', 'Vss Wss')
+  AddForm('f3 0f 52', 'rsqrtss', 'Vss Wss')
+  AddForm('f3 0f 53', 'rcpss', 'Vss Wss')
   # AddForm('66 0f 50', 'movmskpd', 'Gd Upd')
-  # AddForm('66 0f 51', 'sqrtpd', 'Vpd Wpd')
-  # AddForm('66 0f 54', 'andpd', 'Vpd Wpd')
-  # AddForm('66 0f 55', 'andnpd', 'Vpd Wpd')
-  # AddForm('66 0f 56', 'orpd', 'Vpd Wpd')
-  # AddForm('66 0f 57', 'xorpd', 'Vpd Wpd')
-  # AddForm('f2 0f 51', 'sqrtsd', 'Vsd Wsd')
+  AddForm('66 0f 51', 'sqrtpd', 'Vpd Wpd')
+  AddForm('66 0f 54', 'andpd', 'Vpd Wpd')
+  AddForm('66 0f 55', 'andnpd', 'Vpd Wpd')
+  AddForm('66 0f 56', 'orpd', 'Vpd Wpd')
+  AddForm('66 0f 57', 'xorpd', 'Vpd Wpd')
+  AddForm('f2 0f 51', 'sqrtsd', 'Vsd Wsd')
 
-  # for opcode, name in [('0f 58', 'add'),
-  #                      ('0f 59', 'mul'),
-  #                      ('0f 5c', 'sub'),
-  #                      ('0f 5d', 'min'),
-  #                      ('0f 5e', 'div'),
-  #                      ('0f 5f', 'max')]:
-  #   AddForm(opcode, name + 'ps', 'Vps Wps')
-  #   AddForm('f3 ' + opcode, name + 'ss', 'Vss Wss')
-  #   AddForm('66 ' + opcode, name + 'pd', 'Vpd Wpd')
-  #   AddForm('f2 ' + opcode, name + 'sd', 'Vsd Wsd')
-  # # The AMD manual has 'Vpd Wps', but 'Wps' is not correct because the
-  # # operand is 64-bit.
-  # Add('0f 5a', 'cvtps2pd', [('reg', 'xmm'), ('rm', 'xmm64')])
-  # AddForm('f3 0f 5a', 'cvtss2sd', 'Vsd Wss')
-  # AddForm('66 0f 5a', 'cvtpd2ps', 'Vps Wpd')
-  # AddForm('f2 0f 5a', 'cvtsd2ss', 'Vss Wsd')
-  # AddForm('0f 5b', 'cvtdq2ps', 'Vps Wdq')
-  # AddForm('f3 0f 5b', 'cvttps2dq', 'Vdq Wps')
-  # AddForm('66 0f 5b', 'cvtps2dq', 'Vdq Wps')
-  # # 'f3 0f 5b' is invalid.
+  for opcode, name in [('0f 58', 'add'),
+                       ('0f 59', 'mul'),
+                       ('0f 5c', 'sub'),
+                       ('0f 5d', 'min'),
+                       ('0f 5e', 'div'),
+                       ('0f 5f', 'max')]:
+    AddForm(opcode, name + 'ps', 'Vps Wps')
+    AddForm('f3 ' + opcode, name + 'ss', 'Vss Wss')
+    AddForm('66 ' + opcode, name + 'pd', 'Vpd Wpd')
+    AddForm('f2 ' + opcode, name + 'sd', 'Vsd Wsd')
+  # The AMD manual has 'Vpd Wps', but 'Wps' is not correct because the
+  # operand is 64-bit.
+  Add('0f 5a', 'cvtps2pd', [('reg', 'xmm'), ('rm', 'xmm64')])
+  AddForm('f3 0f 5a', 'cvtss2sd', 'Vsd Wss')
+  AddForm('66 0f 5a', 'cvtpd2ps', 'Vps Wpd')
+  AddForm('f2 0f 5a', 'cvtsd2ss', 'Vss Wsd')
+  AddForm('0f 5b', 'cvtdq2ps', 'Vps Wdq')
+  AddForm('f3 0f 5b', 'cvttps2dq', 'Vdq Wps')
+  AddForm('66 0f 5b', 'cvtps2dq', 'Vdq Wps')
+  # 'f3 0f 5b' is invalid.
 
   # MMX
   AddForm('0f 60', 'punpcklbw', 'Pq Qd')
