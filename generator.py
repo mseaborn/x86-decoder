@@ -882,8 +882,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   if not nacl_mode:
     Add('66 6a', 'data16 push', [('imm', 8)])
 
-  # AddLW(0x69, 'imul', ['reg', 'rm', 'imm'])
-  # AddLW(0x6b, 'imul', ['reg', 'rm', 'imm8'])
+  AddLW(0x69, 'imul', ['reg', 'rm', 'imm'])
+  AddLW(0x6b, 'imul', ['reg', 'rm', 'imm8'])
 
   # Short (8-bit offset) conditional jumps
   for cond_num, cond_name in enumerate(cond_codes):
