@@ -900,23 +900,23 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # Add('9f', 'lahf', [])
   Add('f4', 'hlt', [])
 
-  # if not nacl_mode:
-  #   Add('27', 'daa', [])
-  #   Add('2f', 'das', [])
-  #   Add('37', 'aaa', [])
-  #   Add('3f', 'aas', [])
-  #   Add('60', 'pusha', [])
-  #   Add('61', 'popa', [])
-  #   Add('9c', 'pushf', [])
-  #   Add('9d', 'popf', [])
-  #   Add('c2', 'ret', [('imm', 16)])
-  #   Add('c3', 'ret', [])
-  #   Add('cc', 'int3', [])
-  #   Add('cd', 'int', [('imm', 8)])
-  #   Add('ce', 'into', [])
-  #   Add('cf', 'iret', [])
-  #   Add('fa', 'cli', [])
-  #   Add('fb', 'sti', [])
+  if not nacl_mode:
+    Add('27', 'daa', [])
+    Add('2f', 'das', [])
+    Add('37', 'aaa', [])
+    Add('3f', 'aas', [])
+    Add('60', 'pusha', [])
+    Add('61', 'popa', [])
+    Add('9c', 'pushf', [])
+    Add('9d', 'popf', [])
+    Add('c2', 'ret', [('imm', 16)])
+    Add('c3', 'ret', [])
+    Add('cc', 'int3', [])
+    Add('cd', 'int', [('imm', 8)])
+    Add('ce', 'into', [])
+    Add('cf', 'iret', [])
+    Add('fa', 'cli', [])
+    Add('fb', 'sti', [])
 
   # Add('c9', 'leave', [])
   # # 'data16 leave' is probably never useful, but we allow it for
@@ -940,7 +940,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   AddPair2(prefix_bytes, 0xa6, prefix + 'cmps', ['ds:[esi]', 'es:[edi]'])
   #   AddPair2(prefix_bytes, 0xae, prefix + 'scas', ['*ax', 'es:[edi]'])
 
-  # AddPair(0xa8, 'test', ['*ax', 'imm'])
+  AddPair(0xa8, 'test', ['*ax', 'imm'])
 
   if not nacl_mode:
     Add('e0', 'loopne', [('jump_dest', 8)])
@@ -1231,32 +1231,32 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     Add('0f ' + Byte(0x90 + cond_num), 'set' + cond_name, [('rm', 8)],
         modrm_opcode=0)
 
-  # Add('0f a2', 'cpuid', [])
-  # if not nacl_mode:
-  #   # Bit test/set/clear operations
-  #   AddLW2('0f a3', 'bt', ['rm', 'reg'])
-  #   AddLW2('0f ab', 'bts', ['rm', 'reg'])
-  #   AddLW2('0f b3', 'btr', ['rm', 'reg'])
-  #   AddLW2('0f bb', 'btc', ['rm', 'reg'])
-  #   # Group 8
-  #   AddLW2('0f ba', 'bt', ['rm', 'imm8'], modrm_opcode=4)
-  #   AddLW2('0f ba', 'bts', ['rm', 'imm8'], modrm_opcode=5)
-  #   AddLW2('0f ba', 'btr', ['rm', 'imm8'], modrm_opcode=6)
-  #   AddLW2('0f ba', 'btc', ['rm', 'imm8'], modrm_opcode=7)
+  Add('0f a2', 'cpuid', [])
+  if not nacl_mode:
+    # Bit test/set/clear operations
+    AddLW2('0f a3', 'bt', ['rm', 'reg'])
+    AddLW2('0f ab', 'bts', ['rm', 'reg'])
+    AddLW2('0f b3', 'btr', ['rm', 'reg'])
+    AddLW2('0f bb', 'btc', ['rm', 'reg'])
+    # Group 8
+    AddLW2('0f ba', 'bt', ['rm', 'imm8'], modrm_opcode=4)
+    AddLW2('0f ba', 'bts', ['rm', 'imm8'], modrm_opcode=5)
+    AddLW2('0f ba', 'btr', ['rm', 'imm8'], modrm_opcode=6)
+    AddLW2('0f ba', 'btc', ['rm', 'imm8'], modrm_opcode=7)
 
-  # # Bit shift left/right
-  # AddLW2('0f a4', 'shld', ['rm', 'reg', 'imm8'])
-  # AddLW2('0f a5', 'shld', ['rm', 'reg', 'cl'])
-  # AddLW2('0f ac', 'shrd', ['rm', 'reg', 'imm8'])
-  # AddLW2('0f ad', 'shrd', ['rm', 'reg', 'cl'])
+  # Bit shift left/right
+  AddLW2('0f a4', 'shld', ['rm', 'reg', 'imm8'])
+  AddLW2('0f a5', 'shld', ['rm', 'reg', 'cl'])
+  AddLW2('0f ac', 'shrd', ['rm', 'reg', 'imm8'])
+  AddLW2('0f ad', 'shrd', ['rm', 'reg', 'cl'])
 
-  # if not nacl_mode:
-  #   Add('0f aa', 'rsm', [])
-  # AddLW2('0f af', 'imul', ['reg', 'rm'])
+  if not nacl_mode:
+    Add('0f aa', 'rsm', [])
+  AddLW2('0f af', 'imul', ['reg', 'rm'])
 
-  # # Bit scan forwards/reverse
-  # AddLW2('0f bc', 'bsf', ['reg', 'rm'])
-  # AddLW2('0f bd', 'bsr', ['reg', 'rm'])
+  # Bit scan forwards/reverse
+  AddLW2('0f bc', 'bsf', ['reg', 'rm'])
+  AddLW2('0f bd', 'bsr', ['reg', 'rm'])
 
   # Move with zero/sign extend.
   if rex_w:
@@ -1282,9 +1282,9 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddLW2('f3 0f b8', 'popcnt', ['reg', 'rm'])
   # AddLW2('f3 0f bd', 'lzcnt', ['reg', 'rm'])
 
-  # # Added in the 486.
-  # AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
-  # AddPair2('0f', 0xc0, 'xadd', ['rm', 'reg'])
+  # Added in the 486.
+  AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
+  AddPair2('0f', 0xc0, 'xadd', ['rm', 'reg'])
   # # Group 9 just contains cmpxchg.
   # Add('0f c7', 'cmpxchg8b', [('mem', 64)], modrm_opcode=1)
   # for reg_num in range(8):
