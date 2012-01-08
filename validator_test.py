@@ -135,6 +135,64 @@ jmp *%rax
 jmp label
 """)
 
+# Read-only access to special registers is allowed.
+TestCase(accept=True, asm='push %rax')
+TestCase(accept=True, asm='push %rbp')
+TestCase(accept=True, asm='push %rsp')
+TestCase(accept=True, asm='push %r15')
+# But write access is not.
+TestCase(accept=True, asm='pop %rax')
+TestCase(accept=False, asm='pop %rbp')
+TestCase(accept=False, asm='pop %rsp')
+TestCase(accept=False, asm='pop %r15')
+
+# Memory accesses.
+TestCase(accept=True, asm="""
+mov %eax, %eax
+mov (%r15, %rax), %ebx
+""")
+TestCase(accept=True, asm="""
+mov %eax, %eax
+""")
+# TODO:
+# TestCase(accept=False, asm="""
+# mov (%r15, %rax), %ebx
+# """)
+# TestCase(accept=False, asm="""
+# mov %eax, %eax
+# label:
+# mov (%r15, %rax), %ebx
+# jmp label
+# """)
+
+# Non-%r15-based memory accesses.
+TestCase(accept=True, asm='mov 0x1234(%rip), %eax')
+TestCase(accept=True, asm='mov 0x1234(%rsp), %eax')
+TestCase(accept=True, asm='mov 0x1234(%rbp), %eax')
+TestCase(accept=True, asm='mov 0x1234(%rsp, %rbx), %eax')
+TestCase(accept=True, asm='mov 0x1234(%rbp, %rbx), %eax')
+
+# 'lea' is not a memory access.
+TestCase(accept=True, asm='lea (%rbx, %rcx, 4), %rax')
+
+# Stack operations.
+TestCase(accept=True, asm='mov %rsp, %rbp')
+TestCase(accept=True, asm='mov %rbp, %rsp')
+TestCase(accept=True, asm="""
+add $8, %ebp
+add %r15, %rbp
+""")
+TestCase(accept=False, asm="""
+add $8, %ebp
+label:
+add %r15, %rbp
+jmp label
+""")
+# A stack fixup on its own is not allowed.
+TestCase(accept=False, asm='add %r15, %rbp')
+TestCase(accept=False, asm='add %r15, %rsp')
+TestCase(accept=False, asm='add %r15, %r15')
+
 
 def Main():
   for test_case in test_cases:
