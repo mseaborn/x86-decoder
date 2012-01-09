@@ -1282,7 +1282,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
-    AddLW2('0f ' + Byte(0x40 + cond_num), 'cmov' + cond_name, ['reg', 'rm'])
+    AddLW2('0f ' + Byte(0x40 + cond_num), 'cmov' + cond_name,
+           ['reg', {'kind': 'rm', 'readonly': True}])
     # 4-byte offset jumps.
     Add('0f ' + Byte(0x80 + cond_num), 'j' + cond_name, [('jump_dest', 32)])
     # 2-byte offset jumps.
