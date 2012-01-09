@@ -1249,36 +1249,36 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   else:
     AddForm('0f 7e', 'movd', 'Ed Pd') # Ed/q Pd/q
     AddForm('66 0f 7e', 'movd', 'Ed Vd') # Ed/q Vd/q
-  # AddForm('0f 7f', 'movq', 'Qq Pq')
-  # AddForm('f3 0f 7f', 'movdqu', 'Wdq Vdq')
-  # AddForm('66 0f 7f', 'movdqa', 'Wdq Vdq')
-  # # Group 12
-  # AddForm('0f 71', 'psrlw', 'Nq Ib', modrm_opcode=2)
-  # AddForm('0f 71', 'psraw', 'Nq Ib', modrm_opcode=4)
-  # AddForm('0f 71', 'psllw', 'Nq Ib', modrm_opcode=6)
-  # AddForm('66 0f 71', 'psrlw', 'Udq Ib', modrm_opcode=2)
-  # AddForm('66 0f 71', 'psraw', 'Udq Ib', modrm_opcode=4)
-  # AddForm('66 0f 71', 'psllw', 'Udq Ib', modrm_opcode=6)
-  # # Group 13
-  # AddForm('0f 72', 'psrld', 'Nq Ib', modrm_opcode=2)
-  # AddForm('0f 72', 'psrad', 'Nq Ib', modrm_opcode=4)
-  # AddForm('0f 72', 'pslld', 'Nq Ib', modrm_opcode=6)
-  # AddForm('66 0f 72', 'psrld', 'Udq Ib', modrm_opcode=2)
-  # AddForm('66 0f 72', 'psrad', 'Udq Ib', modrm_opcode=4)
-  # AddForm('66 0f 72', 'pslld', 'Udq Ib', modrm_opcode=6)
-  # # Group 14
-  # AddForm('0f 73', 'psrlq', 'Nq Ib', modrm_opcode=2)
-  # AddForm('0f 73', 'psllq', 'Nq Ib', modrm_opcode=6)
-  # AddForm('66 0f 73', 'psrlq', 'Udq Ib', modrm_opcode=2)
-  # AddForm('66 0f 73', 'psrldq', 'Udq Ib', modrm_opcode=3)
-  # AddForm('66 0f 73', 'psllq', 'Udq Ib', modrm_opcode=6)
-  # AddForm('66 0f 73', 'pslldq', 'Udq Ib', modrm_opcode=7)
-  # # Group 17
-  # if not nacl_mode:
-  #   # The AMD manual says 'Vdq' (reg), but it should be 'Udq' (reg2).
-  #   # This form of extrq is disallowed.
-  #   # See http://code.google.com/p/nativeclient/issues/detail?id=1970
-  #   AddForm('66 0f 78', 'extrq', 'Udq Ib Ib', modrm_opcode=0)
+  AddForm('0f 7f', 'movq', 'Qq Pq')
+  AddForm('f3 0f 7f', 'movdqu', 'Wdq Vdq')
+  AddForm('66 0f 7f', 'movdqa', 'Wdq Vdq')
+  # Group 12
+  AddForm('0f 71', 'psrlw', 'Nq Ib', modrm_opcode=2)
+  AddForm('0f 71', 'psraw', 'Nq Ib', modrm_opcode=4)
+  AddForm('0f 71', 'psllw', 'Nq Ib', modrm_opcode=6)
+  AddForm('66 0f 71', 'psrlw', 'Udq Ib', modrm_opcode=2)
+  AddForm('66 0f 71', 'psraw', 'Udq Ib', modrm_opcode=4)
+  AddForm('66 0f 71', 'psllw', 'Udq Ib', modrm_opcode=6)
+  # Group 13
+  AddForm('0f 72', 'psrld', 'Nq Ib', modrm_opcode=2)
+  AddForm('0f 72', 'psrad', 'Nq Ib', modrm_opcode=4)
+  AddForm('0f 72', 'pslld', 'Nq Ib', modrm_opcode=6)
+  AddForm('66 0f 72', 'psrld', 'Udq Ib', modrm_opcode=2)
+  AddForm('66 0f 72', 'psrad', 'Udq Ib', modrm_opcode=4)
+  AddForm('66 0f 72', 'pslld', 'Udq Ib', modrm_opcode=6)
+  # Group 14
+  AddForm('0f 73', 'psrlq', 'Nq Ib', modrm_opcode=2)
+  AddForm('0f 73', 'psllq', 'Nq Ib', modrm_opcode=6)
+  AddForm('66 0f 73', 'psrlq', 'Udq Ib', modrm_opcode=2)
+  AddForm('66 0f 73', 'psrldq', 'Udq Ib', modrm_opcode=3)
+  AddForm('66 0f 73', 'psllq', 'Udq Ib', modrm_opcode=6)
+  AddForm('66 0f 73', 'pslldq', 'Udq Ib', modrm_opcode=7)
+  # Group 17
+  if not nacl_mode:
+    # The AMD manual says 'Vdq' (reg), but it should be 'Udq' (reg2).
+    # This form of extrq is disallowed.
+    # See http://code.google.com/p/nativeclient/issues/detail?id=1970
+    AddForm('66 0f 78', 'extrq', 'Udq Ib Ib', modrm_opcode=0)
 
   for cond_num, cond_name in enumerate(cond_codes):
     # Conditional move.  Added in P6.
@@ -1349,11 +1349,11 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddPair2('0f', 0xc0, 'xadd', ['rm', 'reg'])
   # # Group 9 just contains cmpxchg.
   # Add('0f c7', 'cmpxchg8b', [('mem', 64)], modrm_opcode=1)
-  # for reg_num in range(8):
-  #   # bswap is undefined when used with the data16 prefix (because
-  #   # xchgw could be used for swapping bytes in a word instead),
-  #   # although objdump decodes such instructions.
-  #   Add('0f ' + Byte(0xc8 + reg_num), 'bswap', [(('fixreg', reg_num), 32)])
+  for reg_num in range(8):
+    # bswap is undefined when used with the data16 prefix (because
+    # xchgw could be used for swapping bytes in a word instead),
+    # although objdump decodes such instructions.
+    Add('0f ' + Byte(0xc8 + reg_num), 'bswap', [(FixReg(reg_num), RexSize(32))])
 
   AddForm('0f c2', 'cmpps', 'Vps Wps Ib')
   AddForm('f3 0f c2', 'cmpss', 'Vss Wss Ib')
@@ -1374,64 +1374,65 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # AddForm('0f c6', 'shufps', 'Vps Wps Ib')
   # AddForm('66 0f c6', 'shufpd', 'Vpd Wpd Ib')
 
-  # AddForm('66 0f d0', 'addsubpd', 'Vpd Wpd')
-  # AddForm('f2 0f d0', 'addsubps', 'Vps Wps')
-  # AddSSEMMXPair('0f d1', 'psrlw')
-  # AddSSEMMXPair('0f d2', 'psrld')
-  # AddSSEMMXPair('0f d3', 'psrlq')
-  # AddSSEMMXPair('0f d4', 'paddq')
-  # AddSSEMMXPair('0f d5', 'pmullw')
-  # AddForm('f3 0f d6', 'movq2dq', 'Vdq Nq')
-  # AddForm('66 0f d6', 'movq', 'Wq Vq')
-  # AddForm('f2 0f d6', 'movdq2q', 'Pq Uq')
+  AddForm('66 0f d0', 'addsubpd', 'Vpd Wpd')
+  AddForm('f2 0f d0', 'addsubps', 'Vps Wps')
+  AddSSEMMXPair('0f d1', 'psrlw')
+  AddSSEMMXPair('0f d2', 'psrld')
+  AddSSEMMXPair('0f d3', 'psrlq')
+  AddSSEMMXPair('0f d4', 'paddq')
+  AddSSEMMXPair('0f d5', 'pmullw')
+  AddForm('f3 0f d6', 'movq2dq', 'Vdq Nq')
+  AddForm('66 0f d6', 'movq', 'Wq Vq')
+  AddForm('f2 0f d6', 'movdq2q', 'Pq Uq')
   # AddForm('0f d7', 'pmovmskb', 'Gd Nq')
   # AddForm('66 0f d7', 'pmovmskb', 'Gd Udq')
-  # AddSSEMMXPair('0f d8', 'psubusb')
-  # AddSSEMMXPair('0f d9', 'psubusw')
-  # AddSSEMMXPair('0f da', 'pminub')
-  # AddSSEMMXPair('0f db', 'pand')
-  # AddSSEMMXPair('0f dc', 'paddusb')
-  # AddSSEMMXPair('0f dd', 'paddusw')
-  # AddSSEMMXPair('0f de', 'pmaxub')
-  # AddSSEMMXPair('0f df', 'pandn')
+  AddSSEMMXPair('0f d8', 'psubusb')
+  AddSSEMMXPair('0f d9', 'psubusw')
+  AddSSEMMXPair('0f da', 'pminub')
+  AddSSEMMXPair('0f db', 'pand')
+  AddSSEMMXPair('0f dc', 'paddusb')
+  AddSSEMMXPair('0f dd', 'paddusw')
+  AddSSEMMXPair('0f de', 'pmaxub')
+  AddSSEMMXPair('0f df', 'pandn')
 
-  # AddSSEMMXPair('0f e0', 'pavgb')
-  # AddSSEMMXPair('0f e1', 'psraw')
-  # AddSSEMMXPair('0f e2', 'psrad')
-  # AddSSEMMXPair('0f e3', 'pavgw')
-  # AddSSEMMXPair('0f e4', 'pmulhuw')
-  # AddSSEMMXPair('0f e5', 'pmulhw')
-  # AddForm('f3 0f e6', 'cvtdq2pd', 'Vpd Wq')
-  # AddForm('66 0f e6', 'cvttpd2dq', 'Vq Wpd')
-  # AddForm('f2 0f e6', 'cvtpd2dq', 'Vq Wpd')
-  # AddForm('0f e7', 'movntq', 'Mq Pq')
-  # AddForm('66 0f e7', 'movntdq', 'Mdq Vdq')
-  # AddSSEMMXPair('0f e8', 'psubsb')
-  # AddSSEMMXPair('0f e9', 'psubsw')
-  # AddSSEMMXPair('0f ea', 'pminsw')
-  # AddSSEMMXPair('0f eb', 'por')
-  # AddSSEMMXPair('0f ec', 'paddsb')
-  # AddSSEMMXPair('0f ed', 'paddsw')
-  # AddSSEMMXPair('0f ee', 'pmaxsw')
-  # AddSSEMMXPair('0f ef', 'pxor')
+  AddSSEMMXPair('0f e0', 'pavgb')
+  AddSSEMMXPair('0f e1', 'psraw')
+  AddSSEMMXPair('0f e2', 'psrad')
+  AddSSEMMXPair('0f e3', 'pavgw')
+  AddSSEMMXPair('0f e4', 'pmulhuw')
+  AddSSEMMXPair('0f e5', 'pmulhw')
+  AddForm('f3 0f e6', 'cvtdq2pd', 'Vpd Wq')
+  AddForm('66 0f e6', 'cvttpd2dq', 'Vq Wpd')
+  AddForm('f2 0f e6', 'cvtpd2dq', 'Vq Wpd')
+  AddForm('0f e7', 'movntq', 'Mq Pq')
+  AddForm('66 0f e7', 'movntdq', 'Mdq Vdq')
+  AddSSEMMXPair('0f e8', 'psubsb')
+  AddSSEMMXPair('0f e9', 'psubsw')
+  AddSSEMMXPair('0f ea', 'pminsw')
+  AddSSEMMXPair('0f eb', 'por')
+  AddSSEMMXPair('0f ec', 'paddsb')
+  AddSSEMMXPair('0f ed', 'paddsw')
+  AddSSEMMXPair('0f ee', 'pmaxsw')
+  AddSSEMMXPair('0f ef', 'pxor')
 
-  # # This should be 'Vpd Mdq', but objdump omits the 'XMMWORD' string.
-  # Add('f2 0f f0', 'lddqu', [('reg', 'xmm'), ('mem', 'lddqu_size')]) 
-  # AddSSEMMXPair('0f f1', 'psllw')
-  # AddSSEMMXPair('0f f2', 'pslld')
-  # AddSSEMMXPair('0f f3', 'psllq')
-  # AddSSEMMXPair('0f f4', 'pmuludq')
-  # AddSSEMMXPair('0f f5', 'pmaddwd')
-  # AddSSEMMXPair('0f f6', 'psadbw')
+  # This should be 'Vpd Mdq', but objdump omits the 'XMMWORD' string.
+  Add('f2 0f f0', 'lddqu', [('reg', 'xmm'), ('mem', 'lddqu_size')]) 
+  AddSSEMMXPair('0f f1', 'psllw')
+  AddSSEMMXPair('0f f2', 'pslld')
+  AddSSEMMXPair('0f f3', 'psllq')
+  AddSSEMMXPair('0f f4', 'pmuludq')
+  AddSSEMMXPair('0f f5', 'pmaddwd')
+  AddSSEMMXPair('0f f6', 'psadbw')
+  # TODO: maskmov* requires a memory access mask.
   # AddForm('0f f7', 'maskmovq', 'Pq Nq')
   # AddForm('66 0f f7', 'maskmovdqu', 'Vdq Udq')
-  # AddSSEMMXPair('0f f8', 'psubb')
-  # AddSSEMMXPair('0f f9', 'psubw')
-  # AddSSEMMXPair('0f fa', 'psubd')
-  # AddSSEMMXPair('0f fb', 'psubq')
-  # AddSSEMMXPair('0f fc', 'paddb')
-  # AddSSEMMXPair('0f fd', 'paddw')
-  # AddSSEMMXPair('0f fe', 'paddd')
+  AddSSEMMXPair('0f f8', 'psubb')
+  AddSSEMMXPair('0f f9', 'psubw')
+  AddSSEMMXPair('0f fa', 'psubd')
+  AddSSEMMXPair('0f fb', 'psubq')
+  AddSSEMMXPair('0f fc', 'paddb')
+  AddSSEMMXPair('0f fd', 'paddw')
+  AddSSEMMXPair('0f fe', 'paddd')
 
   # # SSE
   # # Group 15
