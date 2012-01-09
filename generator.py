@@ -1133,13 +1133,13 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   Add('0f 2f', 'comiss', [('reg', 'xmm'), ('rm', 'xmm32')])
   AddForm('66 0f 2f', 'comisd', 'Vpd Wsd')
 
-  # Add('0f 31', 'rdtsc', [])
-  # if not nacl_mode:
-  #   Add('0f 30', 'wrmsr', [])
-  #   Add('0f 32', 'rdmsr', [])
-  #   Add('0f 33', 'rdpmc', [])
-  #   Add('0f 34', 'sysenter', [])
-  #   Add('0f 35', 'sysexit', [])
+  Add('0f 31', 'rdtsc', [])
+  if not nacl_mode:
+    Add('0f 30', 'wrmsr', [])
+    Add('0f 32', 'rdmsr', [])
+    Add('0f 33', 'rdpmc', [])
+    Add('0f 34', 'sysenter', [])
+    Add('0f 35', 'sysexit', [])
 
   # AddForm('0f 50', 'movmskps', 'Gd Ups')
   AddForm('0f 51', 'sqrtps', 'Vps Wps')
