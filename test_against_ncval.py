@@ -7,6 +7,7 @@ import subprocess
 
 from generator import Byte
 import generator
+import trie
 
 
 bundle_size = 32
@@ -23,8 +24,10 @@ def GetInstructions():
 
   # TODO: It would be better if we tested the final DFA, rather than
   # enumerating the superinstructions here separately.
-  indirect_jumps = generator.MergeMany(list(generator.SandboxedJumps()),
-                                       generator.NoMerge)
+  indirect_jumps = generator.MergeMany(
+      [generator.TrieOfList(bytes, trie.AcceptNode)
+       for bytes in generator.SuperInsts()],
+      generator.NoMerge)
   for bytes, label_map in generator.FlattenTrie(indirect_jumps):
     label_map['align_to_end'] = True # Aligns the jmps unnecessarily
     yield bytes, label_map

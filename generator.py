@@ -33,11 +33,11 @@ regs8_original = ('al', 'cl', 'dl', 'bl', 'ah', 'ch', 'dh', 'bh')
 regs8_extended = ('al', 'cl', 'dl', 'bl', 'spl', 'bpl', 'sil', 'dil',
                   'r8b', 'r9b', 'r10b', 'r11b', 'r12b', 'r13b', 'r14b', 'r15b')
 
-nacl_unwritable_reg = (
+nacl_unwritable_reg = set([
     'r15', 'r15d', 'r15w', 'r15b',
     'rsp', 'esp', 'sp', 'spl',
     'rbp', 'ebp', 'bp', 'bpl',
-    )
+    ])
 
 nacl_base_regs = ('r15', 'rsp', 'rbp')
 
@@ -82,6 +82,8 @@ def GetOperandRegs(attrs, top_bit, reglist):
       labels.append(('requires_fixup', reg))
     elif not attrs.readonly and regname in nacl_unwritable_reg:
       continue
+    elif attrs.canzeroextend and regname in regs32:
+      labels.append(('zeroextends', reg))
     yield (reg, regname, labels)
 
 mem_sizes = {
@@ -329,6 +331,8 @@ def MergeMany(nodes, merge_accept_types):
 
   if isinstance(nodes[0], DftLabel):
     for node in nodes:
+      if not isinstance(node, DftLabel):
+        raise AssertionError('Not label, does not match %r' % nodes[0].key)
       AssertEq(node.key, nodes[0].key)
       AssertEq(node.value, nodes[0].value)
     return DftLabel(nodes[0].key,
@@ -442,7 +446,7 @@ def StripDftRec(node, accept_type, replace):
       accept_type = 'replace'
       replace = StackFixup(node.value)
     new_node = StripDftRec(node.next, accept_type, replace)
-    if node.key == 'requires_zeroextend':
+    if node.key in ('requires_zeroextend', 'zeroextends'):
       # Keep the label
       new_node = trie.DftLabelInterned(node.key, node.value, new_node)
     return new_node
@@ -1675,8 +1679,20 @@ def GetAll(node):
     yield (bytes, InstrFromLabels(label_map))
 
 
-def SandboxedJumps():
-  tail = trie.MakeInterned({}, 'normal_inst')
+# This is hacky.  To allow a superinstruction to be merged with the
+# main trie, it needs to have a 'zeroextends' label in the same place.
+def CopyInLabel(bytes, node):
+  if len(bytes) == 0:
+    return trie.MakeInterned({}, 'normal_inst')
+  elif isinstance(node, DftLabel):
+    assert node.key == 'zeroextends'
+    return DftLabel(node.key, node.value, CopyInLabel(bytes, node.next))
+  else:
+    child = node.children.get(bytes[0], trie.EmptyNode)
+    return TrieOfList([bytes[0]], CopyInLabel(bytes[1:], child))
+
+
+def SuperInsts():
   for reg in range(8):
     # The original x86-32 validator arbitrarily disallows %esp here,
     # but we allow it.
@@ -1684,8 +1700,8 @@ def SandboxedJumps():
             0x4c, 0x01, 0xf8 | reg]  # add %r15, %reg
     jmp = [0xff, 0xe0 | reg]  # jmp *%reg
     call = [0xff, 0xd0 | reg]  # call *%reg
-    yield TrieOfList(map(Byte, mask + jmp), tail)
-    yield TrieOfList(map(Byte, mask + call), tail)
+    yield map(Byte, mask + jmp)
+    yield map(Byte, mask + call)
 
     # The original x86-64 validator allows useless 0x40 REX prefixes
     # for top-bit-clear registers, but we don't.
@@ -1699,16 +1715,15 @@ def SandboxedJumps():
               0x4d, 0x01, 0xf8 | reg]  # add %r15, %reg
       jmp = [0x41, 0xff, 0xe0 | reg]  # jmp *%reg
       call = [0x41, 0xff, 0xd0 | reg]  # call *%reg
-      yield TrieOfList(map(Byte, mask + jmp), tail)
-      yield TrieOfList(map(Byte, mask + call), tail)
+      yield map(Byte, mask + jmp)
+      yield map(Byte, mask + call)
 
-  # TODO: These make SandboxedJumps() misnamed.
   # TODO: Also allow non-canonical register orderings.
-  yield TrieOfList(map(Byte, [0x48, 0x89, 0xe5]), tail) # mov %rsp, %rbp
-  yield TrieOfList(map(Byte, [0x48, 0x89, 0xec]), tail) # mov %rbp, %rsp
+  yield map(Byte, [0x48, 0x89, 0xe5]) # mov %rsp, %rbp
+  yield map(Byte, [0x48, 0x89, 0xec]) # mov %rbp, %rsp
 
   def Munge(bytes):
-    return TrieOfList(bytes.split(), tail)
+    return bytes.split()
   # Nops
   # TODO: This overlaps with 90 defined elsewhere.
   # TODO: Add decodings of these instructions.
@@ -1776,7 +1791,7 @@ def WriteInstructionList(filename, trie):
   fh = open(filename, 'w')
   for bytes, labels in FlattenTrie(trie):
     suffix = ''
-    for key in ('requires_fixup', 'requires_zeroextend'):
+    for key in ('requires_fixup', 'requires_zeroextend', 'zeroextends'):
       if key in labels:
         suffix += ' {%s:%s}' % (key, labels[key])
     fh.write('%s:%s%s\n' % (' '.join(bytes), InstrFromLabels(labels), suffix))
@@ -1823,7 +1838,8 @@ def Main():
   Log(TrieNodeCount(dfa_root))
 
   Log('Adding jumps...')
-  dfa_root = MergeMany([dfa_root] + list(SandboxedJumps()), MergeAcceptTypes)
+  superinsts = [CopyInLabel(bytes, dfa_root) for bytes in SuperInsts()]
+  dfa_root = MergeMany([dfa_root] + superinsts, MergeAcceptTypes)
   Log('DFA node count:')
   Log(TrieNodeCount(dfa_root))
   dest_file = 'x86_32.trie'

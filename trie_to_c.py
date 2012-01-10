@@ -111,9 +111,14 @@ def Main():
             '    switch (*state) {\n')
   for node in nodes:
     if isinstance(node, trie.DftLabel):
-      assert node.key == 'requires_zeroextend'
-      out.write('      case %i: printf("mem reg %s\\n"); *state = %i; break;\n'
-                % (node_to_id[node], node.value, node_to_id[node.next]))
+      if node.key == 'requires_zeroextend':
+        code = 'printf("req reg %s\\n");' % node.value
+      elif node.key == 'zeroextends':
+        code = 'printf("set reg %s\\n");' % node.value
+      else:
+        raise AssertionError('Unrecognised label: %r' % node.key)
+      out.write('      case %i: %s *state = %i; break;\n'
+                % (node_to_id[node], code, node_to_id[node.next]))
   out.write('      default: return;\n'
             '    }\n'
             '  }\n'
