@@ -85,6 +85,7 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
                load_addr + offset + bundle_offset, *ptr);
         return 1;
       }
+      trie_label_transition(&state);
       ptr++;
       bundle_offset++;
 

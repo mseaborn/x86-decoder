@@ -9,9 +9,11 @@ import trie
 
 # As an optimisation, group together accepting states of the same
 # type.  This makes it possible to check for an accepting type with a
-# range check.
+# range check.  Put labels last.
 def SortKey(node):
-  if node.accept != False:
+  if isinstance(node, trie.DftLabel):
+    return [2]
+  elif node.accept != False:
     return [0, node.accept]
   else:
     return [1]
@@ -56,15 +58,29 @@ def Main():
   nodes = [trie.EmptyNode] + nodes
   node_to_id = dict((node, index) for index, node in enumerate(nodes))
 
+  # To simplify the following code, make labels appear to be rejecting
+  # nodes.  TODO: We emit transition table entries for label states,
+  # but we should omit these to save space.
+  for node in nodes:
+    if isinstance(node, trie.DftLabel):
+      node.accept = False
+      node.children = {}
+
   out = open('trie_table.h', 'w')
   out.write('\n#include <stdint.h>\n\n')
 
   if len(nodes) < 0x100:
     out.write('typedef uint8_t trie_state_t;\n\n')
+    state_size = 8
   elif len(nodes) < 0x10000:
     out.write('typedef uint16_t trie_state_t;\n\n')
+    state_size = 16
   else:
     raise AssertionError('Too many states: %i' % len(nodes))
+
+  print '%i states * 256 * %i bytes = %i bytes' % (
+      len(nodes), state_size / 8,
+      len(nodes) * 256 * state_size / 8)
 
   out.write('static const trie_state_t trie_start = %i;\n\n'
             % node_to_id[root_node])
@@ -89,6 +105,19 @@ def Main():
     out.write('static inline int trie_accepts_%s(trie_state_t node_id) '
               '{\n  return %s;\n}\n\n'
               % (accept_type, expr))
+
+  out.write('static inline void trie_label_transition(trie_state_t *state) {\n'
+            '  while (1) {\n'
+            '    switch (*state) {\n')
+  for node in nodes:
+    if isinstance(node, trie.DftLabel):
+      assert node.key == 'requires_zeroextend'
+      out.write('      case %i: printf("mem reg %s\\n"); *state = %i; break;\n'
+                % (node_to_id[node], node.value, node_to_id[node.next]))
+  out.write('      default: return;\n'
+            '    }\n'
+            '  }\n'
+            '}\n')
 
   WriteTransitionTable(out, nodes, node_to_id)
   out.close()

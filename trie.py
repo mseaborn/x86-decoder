@@ -26,6 +26,21 @@ def Add(root, bytes, instr):
   node.accept = True
 
 
+class DftLabel(object):
+
+  def __init__(self, key, value, next):
+    self.key = key
+    self.value = value
+    self.next = next
+
+DftLabelInterned = memoize.Memoize(DftLabel)
+
+def DftLabels(pairs, node):
+  for key, value in pairs:
+    node = DftLabel(key, value, node)
+  return node
+
+
 interned = weakref.WeakValueDictionary()
 
 def MakeInterned(children, accept):
@@ -114,8 +129,11 @@ def GetAllNodes(root):
     if node not in node_set:
       node_list.append(node)
       node_set.add(node)
-      for key, child in sorted(node.children.iteritems()):
-        Recurse(child)
+      if isinstance(node, DftLabel):
+        Recurse(node.next)
+      else:
+        for key, child in sorted(node.children.iteritems()):
+          Recurse(child)
   Recurse(root)
   return node_list
 
@@ -165,9 +183,15 @@ def WriteToFile(output_filename, root):
   info = {"start": root.id,
           "map": dict((node.id, dict((key, dest.id)
                                      for key, dest in node.children.iteritems()))
-                      for node in node_list),
+                      for node in node_list
+                      if not isinstance(node, DftLabel)),
           "accepts": dict((node.id, node.accept)
-                          for node in node_list)}
+                          for node in node_list
+                          if not isinstance(node, DftLabel)),
+          "labels": dict((node.id, (node.key, node.value, node.next.id))
+                         for node in node_list
+                         if isinstance(node, DftLabel)),
+          }
   fh = open(output_filename, 'w')
   fh.write(repr(info))
   fh.close()
@@ -176,10 +200,16 @@ def WriteToFile(output_filename, root):
 def TrieFromDict(trie_data):
   @memoize.Memoize
   def MakeNode(node_id):
-    children = dict(
-        (key, MakeNode(child_id))
-        for key, child_id in trie_data['map'][node_id].iteritems())
-    return MakeInterned(children, trie_data['accepts'][node_id])
+    if node_id in trie_data['labels']:
+      assert node_id not in trie_data['map']
+      assert node_id not in trie_data['accepts']
+      key, value, next_id = trie_data['labels'][node_id]
+      return DftLabelInterned(key, value, MakeNode(next_id))
+    else:
+      children = dict(
+          (key, MakeNode(child_id))
+          for key, child_id in trie_data['map'][node_id].iteritems())
+      return MakeInterned(children, trie_data['accepts'][node_id])
 
   return MakeNode(trie_data['start'])
 

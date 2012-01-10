@@ -2,9 +2,11 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import resource
 import time
 
 from memoize import Memoize
+from trie import DftLabel, DftLabels
 import objdump_check
 import trie
 
@@ -316,19 +318,6 @@ def TrieOfList(bytes, node):
   return node
 
 
-class DftLabel(object):
-
-  def __init__(self, key, value, next):
-    self.key = key
-    self.value = value
-    self.next = next
-
-def DftLabels(pairs, node):
-  for key, value in pairs:
-    node = DftLabel(key, value, node)
-  return node
-
-
 # Assumes all the input nodes are immutable.
 def MergeMany(nodes, merge_accept_types):
   if len(nodes) == 1:
@@ -443,7 +432,7 @@ def StackFixup(reg):
 # Convert from a transducer (with labels) to an acceptor (no labels).
 # Strip all labels, converting relative_jump labels into accept states.
 @Memoize
-def ConvertToDfaRec(node, accept_type, replace):
+def StripDftRec(node, accept_type, replace):
   if isinstance(node, DftLabel):
     if node.key == 'relative_jump':
       assert accept_type == 'normal_inst'
@@ -452,23 +441,27 @@ def ConvertToDfaRec(node, accept_type, replace):
       assert accept_type == 'normal_inst'
       accept_type = 'replace'
       replace = StackFixup(node.value)
-    return ConvertToDfaRec(node.next, accept_type, replace)
+    new_node = StripDftRec(node.next, accept_type, replace)
+    if node.key == 'requires_zeroextend':
+      # Keep the label
+      new_node = trie.DftLabelInterned(node.key, node.value, new_node)
+    return new_node
   else:
     assert node.accept in (True, False)
     if node.accept:
       if accept_type == 'replace':
         assert len(node.children) == 0
-        return ConvertToDfa(replace)
+        return StripDft(replace)
       accept = accept_type
     else:
       accept = False
     return trie.MakeInterned(
-        dict((key, ConvertToDfaRec(value, accept_type, replace))
+        dict((key, StripDftRec(value, accept_type, replace))
              for key, value in node.children.iteritems()),
         accept)
 
-def ConvertToDfa(node):
-  return ConvertToDfaRec(node, 'normal_inst', None)
+def StripDft(node):
+  return StripDftRec(node, 'normal_inst', None)
 
 
 # Expand wildcard bytes.  This has two benefits:
@@ -478,6 +471,8 @@ def ConvertToDfa(node):
 #    and implicit wildcards).
 @Memoize
 def ExpandWildcards(node):
+  if isinstance(node, DftLabel):
+    return DftLabel(node.key, node.value, ExpandWildcards(node.next))
   if 'XX' in node.children:
     assert len(node.children) == 1, node.children.keys()
     dest = ExpandWildcards(node.children['XX'])
@@ -1789,6 +1784,10 @@ def WriteInstructionList(filename, trie):
 
 
 def Main():
+  # Limit memory usage to prevent mistakes from trashing the system.
+  limit = 1000 << 20
+  resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+
   Log('Building trie...')
   trie_root = GetRoot(nacl_mode=True)
   Log('Size:')
@@ -1812,12 +1811,12 @@ def Main():
       bits=bits)
 
   Log('Converting to DFA...')
-  dfa_root = ConvertToDfa(trie_root)
+  dfa_root = StripDft(trie_root)
   Log('DFA node count:')
   Log(TrieNodeCount(dfa_root))
   Log('Expand wildcards...')
   # This is much faster as a separate pass that is applied after
-  # ConvertToDfa(), because there are fewer nodes to apply the
+  # StripDft(), because there are fewer nodes to apply the
   # expanding-out to.
   dfa_root = ExpandWildcards(dfa_root)
   Log('DFA node count:')
