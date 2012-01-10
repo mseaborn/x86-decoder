@@ -152,26 +152,42 @@ TestCase(accept=True, asm="""
 mov %eax, %eax
 mov (%r15, %rax), %ebx
 """)
+# Test for a top-bit-set register.
+TestCase(accept=True, asm="""
+mov %r12d, %r12d
+mov (%r15, %r12), %ebx
+""")
+# Check %edi and %esi because the first 'mov' also begins superinstructions.
+TestCase(accept=True, asm="""
+mov %edi, %edi
+mov (%r15, %rdi), %ebx
+""")
+TestCase(accept=True, asm="""
+mov %esi, %esi
+mov (%r15, %rsi), %ebx
+""")
+# Check mask on its own.
 TestCase(accept=True, asm="""
 mov %eax, %eax
 """)
-# TODO:
-# TestCase(accept=False, asm="""
-# mov (%r15, %rax), %ebx
-# """)
-# TestCase(accept=False, asm="""
-# mov %eax, %eax
-# label:
-# mov (%r15, %rax), %ebx
-# jmp label
-# """)
+TestCase(accept=False, asm="""
+mov (%r15, %rax), %ebx
+""")
+TestCase(accept=False, asm="""
+mov %eax, %eax
+label:
+mov (%r15, %rax), %ebx
+jmp label
+""")
 
 # Non-%r15-based memory accesses.
 TestCase(accept=True, asm='mov 0x1234(%rip), %eax')
 TestCase(accept=True, asm='mov 0x1234(%rsp), %eax')
 TestCase(accept=True, asm='mov 0x1234(%rbp), %eax')
-TestCase(accept=True, asm='mov 0x1234(%rsp, %rbx), %eax')
-TestCase(accept=True, asm='mov 0x1234(%rbp, %rbx), %eax')
+TestCase(accept=False, asm='mov 0x1234(%rsp, %rbx), %eax')
+TestCase(accept=False, asm='mov 0x1234(%rbp, %rbx), %eax')
+TestCase(accept=True, asm='mov %ebx, %ebx; mov 0x1234(%rsp, %rbx), %eax')
+TestCase(accept=True, asm='mov %ebx, %ebx; mov 0x1234(%rbp, %rbx), %eax')
 
 # 'lea' is not a memory access.
 TestCase(accept=True, asm='lea (%rbx, %rcx, 4), %rax')

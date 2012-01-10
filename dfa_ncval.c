@@ -11,8 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "trie_table.h"
-
 
 typedef Elf64_Ehdr Elf_Ehdr;
 typedef Elf64_Shdr Elf_Shdr;
@@ -36,6 +34,35 @@ static inline int BitmapIsBitSet(uint8_t *bitmap, uint32_t index) {
 static inline void BitmapSetBit(uint8_t *bitmap, uint32_t index) {
   bitmap[index / kBitsPerByte] |= 1 << (index % kBitsPerByte);
 }
+
+
+struct ZeroExtendState {
+  int instruction_pos; /* Position of instruction as offset from bundle */
+  int zeroextend_reg_before;
+  int zeroextend_reg_after;
+};
+
+static int CheckZeroExtendBefore(struct ZeroExtendState *zx_state,
+                                 uint32_t *mask_dest, int reg) {
+  if (zx_state->zeroextend_reg_before == reg) {
+    /* Mask the current instruction as not a valid jump target. */
+    uint32_t bit = 1 << (zx_state->instruction_pos - 1);
+    assert((*mask_dest & bit) != 0);
+    *mask_dest &= ~bit;
+    return 0;
+  } else {
+    printf("register %i not zero-extended at %x (%i)\n",
+           reg, zx_state->instruction_pos, zx_state->zeroextend_reg_before);
+    return 1;
+  }
+}
+
+static void MarkZeroExtendAfter(struct ZeroExtendState *zx_state, int reg) {
+  assert(zx_state->zeroextend_reg_after == -1);
+  zx_state->zeroextend_reg_after = reg;
+}
+
+#include "trie_table.h"
 
 
 static void CheckBounds(unsigned char *data, size_t data_size,
@@ -78,6 +105,10 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
     uint32_t mask = 0;
     int bundle_offset = 0;
     trie_state_t state = trie_start;
+    struct ZeroExtendState zx_state;
+    zx_state.instruction_pos = 0;
+    zx_state.zeroextend_reg_before = -1;
+    zx_state.zeroextend_reg_after = -1;
     while (bundle_offset < bundle_size) {
       state = trie_lookup(state, *ptr);
       if (state == 0) {
@@ -85,7 +116,10 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
                load_addr + offset + bundle_offset, *ptr);
         return 1;
       }
-      trie_label_transition(&state);
+      if (trie_label_transition(&state, &zx_state, &mask)) {
+        printf("rejected at %x\n", load_addr + offset + bundle_offset);
+        return 1;
+      }
       ptr++;
       bundle_offset++;
 
@@ -107,11 +141,17 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
         }
         mask |= 1 << (bundle_offset - 1);
         state = trie_start;
+        zx_state.instruction_pos = bundle_offset;
+        zx_state.zeroextend_reg_before = zx_state.zeroextend_reg_after;
+        zx_state.zeroextend_reg_after = -1;
       }
 
       if (trie_accepts_normal_inst(state)) {
         mask |= 1 << (bundle_offset - 1);
         state = trie_start;
+        zx_state.instruction_pos = bundle_offset;
+        zx_state.zeroextend_reg_before = zx_state.zeroextend_reg_after;
+        zx_state.zeroextend_reg_after = -1;
       } else if (trie_accepts_jump_rel1(state)) {
         RelativeJump(((int8_t *) ptr)[-1]);
       } else if (trie_accepts_jump_rel2(state)) {
@@ -154,6 +194,9 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
            Either way we record the end of the instruction that we reached. */
         mask |= 1 << (bundle_offset - 1);
         state = trie_start;
+        zx_state.instruction_pos = bundle_offset;
+        zx_state.zeroextend_reg_before = zx_state.zeroextend_reg_after;
+        zx_state.zeroextend_reg_after = -1;
       }
     }
     *mask_dest++ = mask;

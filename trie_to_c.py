@@ -106,23 +106,26 @@ def Main():
               '{\n  return %s;\n}\n\n'
               % (accept_type, expr))
 
-  out.write('static inline void trie_label_transition(trie_state_t *state) {\n'
+  out.write('static inline int trie_label_transition('
+            'trie_state_t *state, struct ZeroExtendState *zx_state, '
+            'uint32_t *mask_dest) {\n'
             '  while (1) {\n'
             '    switch (*state) {\n')
   for node in nodes:
     if isinstance(node, trie.DftLabel):
       if node.key == 'requires_zeroextend':
-        code = 'printf("req reg %s\\n");' % node.value
+        code = ('if (CheckZeroExtendBefore(zx_state, mask_dest, %i)) return 1;'
+                % node.value)
       elif node.key == 'zeroextends':
-        code = 'printf("set reg %s\\n");' % node.value
+        code = 'MarkZeroExtendAfter(zx_state, %i);' % node.value
       else:
         raise AssertionError('Unrecognised label: %r' % node.key)
       out.write('      case %i: %s *state = %i; break;\n'
                 % (node_to_id[node], code, node_to_id[node.next]))
-  out.write('      default: return;\n'
+  out.write('      default: return 0;\n'
             '    }\n'
             '  }\n'
-            '}\n')
+            '}\n\n')
 
   WriteTransitionTable(out, nodes, node_to_id)
   out.close()

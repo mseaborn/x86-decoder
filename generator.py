@@ -77,13 +77,14 @@ def GetExtendedRegs(top_bit, reglist):
 def GetOperandRegs(attrs, top_bit, reglist):
   # NaCl constraints
   for reg, regname in GetExtendedRegs(top_bit, reglist):
+    reg_num = reg + (top_bit << 3)
     labels = []
     if attrs.canzeroextend and regname in ('esp', 'ebp'):
-      labels.append(('requires_fixup', reg))
+      labels.append(('requires_fixup', reg_num))
     elif not attrs.readonly and regname in nacl_unwritable_reg:
       continue
     elif attrs.canzeroextend and regname in regs32:
-      labels.append(('zeroextends', reg))
+      labels.append(('zeroextends', reg_num))
     yield (reg, regname, labels)
 
 mem_sizes = {
