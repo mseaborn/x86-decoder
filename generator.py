@@ -74,6 +74,16 @@ def GetExtendedRegs(top_bit, reglist):
   for reg in xrange(8):
     yield reg, reglist[reg + reg_offset]
 
+def GetOperandRegs(attrs, top_bit, reglist):
+  # NaCl constraints
+  for reg, regname in GetExtendedRegs(top_bit, reglist):
+    labels = []
+    if attrs.canzeroextend and regname in ('esp', 'ebp'):
+      labels.append(('requires_fixup', reg))
+    elif not attrs.readonly and regname in nacl_unwritable_reg:
+      continue
+    yield (reg, regname, labels)
+
 mem_sizes = {
   64: 'QWORD PTR ',
   32: 'DWORD PTR ',
@@ -251,13 +261,8 @@ def ModRMMem(rex_x, rex_b, rm_size, tail):
 def ModRMReg(has_rex, rex_b, rm_size, rm_attrs, tail):
   got = []
   mod = 3
-  for reg2, regname2 in GetExtendedRegs(rex_b, RegsBySize(has_rex, rm_size)):
-    # XXX: NaCl constraint
-    labels = []
-    if rm_attrs.canzeroextend and regname2 in ('esp', 'ebp'):
-      labels.append(('requires_fixup', reg2))
-    elif not rm_attrs.readonly and regname2 in nacl_unwritable_reg:
-      continue
+  for reg2, regname2, labels in GetOperandRegs(rm_attrs, rex_b,
+                                               RegsBySize(has_rex, rm_size)):
     got.append((mod, reg2,
                 DftLabels(labels,
                           DftLabel('test_keep', reg2 == 2 or len(labels) != 0,
@@ -277,13 +282,8 @@ def ModRM1(has_rex, rex_x, rex_b, rm_size, rm_attrs,
 
 def ModRM(has_rex, rex_r, rex_x, rex_b, reg_size, reg_attrs,
           rm_size, rm_attrs, rm_allow_reg, rm_allow_mem, tail):
-  for reg, regname in GetExtendedRegs(rex_r, RegsBySize(has_rex, reg_size)):
-    # XXX: NaCl constraint
-    labels = []
-    if reg_attrs.canzeroextend and regname in ('esp', 'ebp'):
-      labels.append(('requires_fixup', reg))
-    elif not reg_attrs.readonly and regname in nacl_unwritable_reg:
-      continue
+  for reg, regname, labels in GetOperandRegs(reg_attrs, rex_r,
+                                             RegsBySize(has_rex, reg_size)):
     for mod, reg2, node in ModRM1(has_rex, rex_x, rex_b, rm_size,
                                   rm_attrs, rm_allow_reg, rm_allow_mem, tail):
       yield TrieOfList([Byte((mod << 6) | (reg << 3) | reg2)],
