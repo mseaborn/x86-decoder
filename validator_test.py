@@ -180,6 +180,35 @@ mov (%r15, %rax), %ebx
 jmp label
 """)
 
+# Check that post-conditions do not leak from a superinstruction.  To
+# share DFT states, the first instruction of the nacljmp, "and $~31,
+# %eax", records a post-condition, just as when it is used on its own.
+# Although the code below is safe, we don't really want the
+# post-condition to leak through.
+TestCase(accept=False, asm="""
+and $~31, %eax
+add %r15, %rax
+jmp *%rax
+// %rax should not be regarded as zero-extended here.
+mov (%r15, %rax), %ebx
+""")
+TestCase(accept=False, asm="""
+mov %edi, %edi
+lea (%r15, %rdi), %rdi
+rep stos %al, %es:(%rdi)
+// %rdi should not be regarded as zero-extended here.
+mov (%r15, %rdi), %ebx
+""")
+TestCase(accept=False, asm="""
+mov %esi, %esi
+lea (%r15, %rsi), %rsi
+mov %edi, %edi
+lea (%r15, %rdi), %rdi
+rep movsb %ds:(%rsi), %es:(%rdi)
+// %rsi should not be regarded as zero-extended here.
+mov (%r15, %rsi), %ebx
+""")
+
 # Non-%r15-based memory accesses.
 TestCase(accept=True, asm='mov 0x1234(%rip), %eax')
 TestCase(accept=True, asm='mov 0x1234(%rsp), %eax')

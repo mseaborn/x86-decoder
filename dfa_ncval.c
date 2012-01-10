@@ -183,6 +183,11 @@ int ValidateChunk(uint32_t load_addr, uint8_t *data, size_t size) {
             /* Commit to the superinstruction. */
             bundle_offset = bundle_offset2;
             ptr = ptr2;
+            /* Undo any zero-extend post-condition that the first
+               instruction of the superinstruction may have recorded,
+               because the superinstruction overall may not have this
+               post-condition. */
+            zx_state.zeroextend_reg_after = -1;
             break;
           }
         }
