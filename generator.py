@@ -1750,34 +1750,33 @@ def SuperInsts():
   yield Munge('66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
   yield Munge('66 66 66 66 66 66 2e 0f 1f 84 00 00 00 00 00')
 
-  # TODO: Do the full set of string operations, in a non-ad-hoc way.
-  string_mask = (
-      '89 f6 '        # mov esi, esi
-      '49 8d 34 37 '  # lea rsi, [r15+rsi*1]
-      '89 ff '        # mov edi, edi
-      '49 8d 3c 3f '  # lea rdi, [r15+rdi*1]
-      )
-  # rep movs BYTE PTR es:[rdi], BYTE PTR ds:[rsi]
-  yield Munge(string_mask + 'f3 a4')
-  # rep movs DWORD PTR es:[rdi], DWORD PTR ds:[rsi]
-  yield Munge(string_mask + 'f3 a5')
-  # rep movs QWORD PTR es:[rdi], QWORD PTR ds:[rsi]
-  yield Munge(string_mask + 'f3 48 a5')
-  # repz cmps BYTE PTR ds:[rsi], BYTE PTR es:[rdi]
-  yield Munge(string_mask + 'f3 a6')
-
-  string_mask = (
-      '89 ff '        # mov edi, edi
-      '49 8d 3c 3f '  # lea rdi, [r15+rdi*1]
-      )
-  # rep stos BYTE PTR es:[rdi], al
-  yield Munge(string_mask + 'f3 aa')
-  # rep stos DWORD PTR es:[rdi], al
-  yield Munge(string_mask + 'f3 ab')
-  # rep stos QWORD PTR es:[rdi], rax
-  yield Munge(string_mask + 'f3 48 ab')
-  # repnz scas al, BYTE PTR es:[rdi]
-  yield Munge(string_mask + 'f2 ae')
+  # String operations.
+  fix_rsi = Munge('89 f6 '        # mov esi, esi
+                  '49 8d 34 37')  # lea rsi, [r15+rsi]
+  fix_rdi = Munge('89 ff '        # mov edi, edi
+                  '49 8d 3c 3f')  # lea rdi, [r15+rdi]
+  string_ops = [
+      (0xa4, 'movs', fix_rsi + fix_rdi),
+      (0xaa, 'stos', fix_rdi),
+      # TODO: Check whether 'lods' should really be allowed.
+      # (0xac, 'lods', fix_rsi),
+      (0xa6, 'cmps', fix_rsi + fix_rdi),
+      (0xae, 'scas', fix_rdi),
+      ]
+  for opcode, instr_name, fixes in string_ops:
+    for prefix_bytes, prefix in [([], ''),
+                                 (['f2'], 'repnz '),
+                                 (['f3'], 'rep ')]:
+      # repnz is not allowed with movs/stos, though that may just be a
+      # mistake in the original validator.  TODO: Check this.
+      if prefix + instr_name in ('repnz movs', 'repnz stos'):
+        continue
+      yield fixes + prefix_bytes + [Byte(opcode)] # 8-bit
+      # Combining the data16 prefix with rep/repnz is not allowed.
+      if prefix == '':
+        yield fixes + ['66'] + prefix_bytes + [Byte(opcode + 1)] # 16-bit
+      yield fixes + prefix_bytes + [Byte(opcode + 1)] # 32-bit
+      yield fixes + prefix_bytes + ['48', Byte(opcode + 1)] # 64-bit
 
 
 def MergeAcceptTypes(accept_types):
