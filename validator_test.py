@@ -239,6 +239,9 @@ TestCase(accept=False, asm='add %r15, %rbp')
 TestCase(accept=False, asm='add %r15, %rsp')
 TestCase(accept=False, asm='add %r15, %r15')
 
+# Sandboxing is not required on prefetch instructions.
+TestCase(accept=True, asm='prefetchnta (%rax)')
+
 
 def Main():
   for test_case in test_cases:

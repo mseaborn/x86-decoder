@@ -98,11 +98,16 @@ mem_sizes = {
   'xmm32': 'DWORD PTR ',
   'xmm64': 'QWORD PTR ',
   'lea_mem': '',
+  'prefetch_mem': 'BYTE PTR ',
   80: 'TBYTE PTR ',
   'other_x87_size': '',
   'fxsave_size': '',
   'lddqu_size': '', # Should be XMMWORD, but objdump omits this.
   }
+
+# 'prefetch' instructions do not need to be sandboxed and can refer to
+# addresses outside the sandbox's address space.
+unsandboxed_mem = ('lea_mem', 'prefetch_mem')
 
 cond_codes = (
   'o', 'no', 'b', 'ae', 'e', 'ne', 'be', 'a',
@@ -190,14 +195,15 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
       # %esi/%edi are missing from headings in table in doc.
       for base_reg, base_regname in GetExtendedRegs(rex_b, regs64):
         # XXX: NaCl constraint
-        if rm_size != 'lea_mem' and base_regname not in nacl_base_regs:
+        if (rm_size not in unsandboxed_mem
+            and base_regname not in nacl_base_regs):
           continue
         labels = []
         if index_regname == 'riz' and base_reg == 4 and scale == 0:
           index_result = ''
         else:
           index_result = '%s*%s' % (index_regname, 1 << scale)
-          if rm_size != 'lea_mem':
+          if rm_size not in unsandboxed_mem:
             labels.append(('requires_zeroextend', index_reg + (rex_x << 3)))
         if base_reg == 5 and mod == 0:
           base_regname = ''
@@ -240,7 +246,7 @@ def ModRMMem(rex_x, rex_b, rm_size, tail):
                                   (2, 4, 'VALUE32')):
     for reg2, regname2 in GetExtendedRegs(rex_b, regs64):
       # XXX: NaCl constraint
-      if rm_size != 'lea_mem' and regname2 not in nacl_base_regs:
+      if rm_size not in unsandboxed_mem and regname2 not in nacl_base_regs:
         continue
       if reg2 == 4:
         # %esp is not accepted in this position.
@@ -1063,8 +1069,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # # TODO: 0f 0f (3DNow)
   # Group P: prefetches
   # TODO: Other modrm_opcode values for prefetches might be allowed.
-  Add('0f 0d', 'prefetch', [('mem', 8)], modrm_opcode=0)
-  Add('0f 0d', 'prefetchw', [('mem', 8)], modrm_opcode=1)
+  Add('0f 0d', 'prefetch', [('mem', 'prefetch_mem')], modrm_opcode=0)
+  Add('0f 0d', 'prefetchw', [('mem', 'prefetch_mem')], modrm_opcode=1)
 
   Add('0f 10', 'movups', [('reg', 'xmm'), ('rm', 'xmm')])
   Add('0f 11', 'movups', [('rm', 'xmm'), ('reg', 'xmm')])
@@ -1077,10 +1083,10 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   Add('0f 16', 'movlhps', [('reg', 'xmm'), ('reg2', 'xmm')])
   Add('0f 17', 'movhps', [('mem', 64), ('reg', 'xmm')])
   # Group 16
-  Add('0f 18', 'prefetchnta', [('mem', 8)], modrm_opcode=0)
-  Add('0f 18', 'prefetcht0', [('mem', 8)], modrm_opcode=1)
-  Add('0f 18', 'prefetcht1', [('mem', 8)], modrm_opcode=2)
-  Add('0f 18', 'prefetcht2', [('mem', 8)], modrm_opcode=3)
+  Add('0f 18', 'prefetchnta', [('mem', 'prefetch_mem')], modrm_opcode=0)
+  Add('0f 18', 'prefetcht0', [('mem', 'prefetch_mem')], modrm_opcode=1)
+  Add('0f 18', 'prefetcht1', [('mem', 'prefetch_mem')], modrm_opcode=2)
+  Add('0f 18', 'prefetcht2', [('mem', 'prefetch_mem')], modrm_opcode=3)
 
   Add('f3 0f 10', 'movss', [('reg', 'xmm'), ('rm', 'xmm32')])
   Add('f3 0f 11', 'movss', [('rm', 'xmm32'), ('reg', 'xmm')])
