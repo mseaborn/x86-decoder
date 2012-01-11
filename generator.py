@@ -208,24 +208,25 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
         if base_reg == 5 and mod == 0:
           base_regname = ''
           extra = 'VALUE32'
-          extra2 = ['XX'] * 4
+          disp_size2 = 4
         else:
           extra = ''
-          extra2 = []
+          disp_size2 = 0
         parts = [base_regname, index_result, extra, disp_str]
         if (index_regname == 'riz' and base_reg == 5 and
             mod == 0 and scale == 0):
           desc = '%sds:VALUE32' % mem_sizes[rm_size]
         else:
           desc = FormatMemAccess(rm_size, parts)
-        bytes = ([Byte((scale << 6) | (index_reg << 3) | base_reg)]
-                 + extra2
-                 + ['XX'] * disp_size)
-        test_keep = (index_reg == 1 and scale == 0 and disp_size == 1)
-        nodes.append(TrieOfList(bytes,
-                                DftLabel('test_keep', test_keep,
-                                         DftLabel('rm_arg', desc,
-                                                  DftLabels(labels, tail)))))
+        sib_byte = (scale << 6) | (index_reg << 3) | base_reg
+        labels.append(('test_keep',
+                       index_reg == 1 and scale == 0 and disp_size == 1))
+        labels.append(('rm_arg', desc))
+        nodes.append(
+            TrieOfList(
+                [Byte(sib_byte)],
+                DftLabels(labels,
+                          TrieOfList(['XX'] * (disp_size + disp_size2), tail))))
   return MergeMany(nodes, NoMerge)
 
 
