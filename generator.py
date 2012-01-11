@@ -1036,11 +1036,11 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddPair(0xfe, 'dec', ['rm'], modrm_opcode=1)
   # Group 5
   AddLWPushPop(0xff, 'push', ['rm'], modrm_opcode=6)
-  # # NaCl disallows using these without a mask instruction first.
-  # # Note that allowing jmp/call with a data16 prefix isn't very useful.
-  # if not nacl_mode:
-  #   AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
-  #   AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
+  # NaCl disallows using these without a mask instruction first.
+  # Note that allowing jmp/call with a data16 prefix isn't very useful.
+  if not nacl_mode:
+    AddLW(0xff, 'call', ['rm'], modrm_opcode=2)
+    AddLW(0xff, 'jmp', ['rm'], modrm_opcode=4)
 
   AddPair(0x88, 'mov', ['rm', {'kind': 'reg', 'readonly': True}])
   AddPair(0x8a, 'mov', ['reg', 'rm'])
@@ -1053,25 +1053,25 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
 
   # Two-byte opcodes.
 
-  # if not nacl_mode:
-  #   Add('0f 05', 'syscall', [])
-  #   Add('0f 06', 'clts', [])
-  #   Add('0f 07', 'sysret', [])
-  #   Add('0f 08', 'invd', [])
-  #   Add('0f 09', 'wbinvd', [])
-  #   Add('0f 0b', 'ud2', [])
-  #   Add('0f 01 d8', 'vmrun', [])
-  #   Add('0f 01 d9', 'vmmcall', [])
-  #   Add('0f 01 da', 'vmload', [])
-  #   Add('0f 01 db', 'vmsave', [])
-  #   Add('0f 01 dc', 'stgi', [])
-  #   Add('0f 01 dd', 'clgi', [])
-  #   Add('0f 01 de', 'skinit', [])
-  #   Add('0f 01 df', 'invlpga', [])
-  #   # 'swapgs' is 64-bit-only.
-  #   # Add('0f 01 f8', 'swapgs', [])
-  #   Add('0f 01 f9', 'rdtscp', [])
-  # Add('0f 0e', 'femms', [])
+  if not nacl_mode:
+    Add('0f 05', 'syscall', [])
+    Add('0f 06', 'clts', [])
+    Add('0f 07', 'sysret', [])
+    Add('0f 08', 'invd', [])
+    Add('0f 09', 'wbinvd', [])
+    Add('0f 0b', 'ud2', [])
+    Add('0f 01 d8', 'vmrun', [])
+    Add('0f 01 d9', 'vmmcall', [])
+    Add('0f 01 da', 'vmload', [])
+    Add('0f 01 db', 'vmsave', [])
+    Add('0f 01 dc', 'stgi', [])
+    Add('0f 01 dd', 'clgi', [])
+    Add('0f 01 de', 'skinit', [])
+    Add('0f 01 df', 'invlpga', [])
+    # 'swapgs' is 64-bit-only.
+    # Add('0f 01 f8', 'swapgs', [])
+    Add('0f 01 f9', 'rdtscp', [])
+  Add('0f 0e', 'femms', [])
   # Group P: prefetches
   # TODO: Other modrm_opcode values for prefetches might be allowed.
   Add('0f 0d', 'prefetch', [('mem', 'prefetch_mem')], modrm_opcode=0)
@@ -1202,17 +1202,17 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddForm('0f 66', 'pcmpgtd', 'Pq Qq')
   AddForm('0f 67', 'packuswb', 'Pq Qq')
 
-  # # SSE
-  # # The AMD manual says 'Wq' rather than 'Wdq' for the next three, but
-  # # it seems to be wrong.
-  # AddForm('66 0f 60', 'punpcklbw', 'Vdq Wdq')
-  # AddForm('66 0f 61', 'punpcklwd', 'Vdq Wdq')
-  # AddForm('66 0f 62', 'punpckldq', 'Vdq Wdq')
-  # AddForm('66 0f 63', 'packsswb', 'Vdq Wdq')
-  # AddForm('66 0f 64', 'pcmpgtb', 'Vdq Wdq')
-  # AddForm('66 0f 65', 'pcmpgtw', 'Vdq Wdq')
-  # AddForm('66 0f 66', 'pcmpgtd', 'Vdq Wdq')
-  # AddForm('66 0f 67', 'packuswb', 'Vdq Wdq')
+  # SSE
+  # The AMD manual says 'Wq' rather than 'Wdq' for the next three, but
+  # it seems to be wrong.
+  AddForm('66 0f 60', 'punpcklbw', 'Vdq Wdq')
+  AddForm('66 0f 61', 'punpcklwd', 'Vdq Wdq')
+  AddForm('66 0f 62', 'punpckldq', 'Vdq Wdq')
+  AddForm('66 0f 63', 'packsswb', 'Vdq Wdq')
+  AddForm('66 0f 64', 'pcmpgtb', 'Vdq Wdq')
+  AddForm('66 0f 65', 'pcmpgtw', 'Vdq Wdq')
+  AddForm('66 0f 66', 'pcmpgtd', 'Vdq Wdq')
+  AddForm('66 0f 67', 'packuswb', 'Vdq Wdq')
 
   AddSSEMMXPair('0f 68', 'punpckhbw')
   AddSSEMMXPair('0f 69', 'punpckhwd')
@@ -1233,26 +1233,26 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddForm('f3 0f 6f', 'movdqu', 'Vdq Wdq')
   AddForm('66 0f 6f', 'movdqa', 'Vdq Wdq')
 
-  # # The AMD manual says 'Wq' rather than 'Wdq' for pshufhw and
-  # # pshuflw, but it seems to be wrong.
-  # AddForm('0f 70', 'pshufw', 'Pq Qq Ib')
-  # AddForm('f3 0f 70', 'pshufhw', 'Vq Wdq Ib')
-  # AddForm('66 0f 70', 'pshufd', 'Vdq Wdq Ib')
-  # AddForm('f2 0f 70', 'pshuflw', 'Vq Wdq Ib')
-  # AddForm('0f 74', 'pcmpeqb', 'Pq Qq')
-  # AddForm('0f 75', 'pcmpeqw', 'Pq Qq')
-  # AddForm('0f 76', 'pcmpeqd', 'Pq Qq')
-  # AddForm('0f 77', 'emms', '')
-  # AddForm('66 0f 74', 'pcmpeqb', 'Vdq Wdq')
-  # AddForm('66 0f 75', 'pcmpeqw', 'Vdq Wdq')
-  # AddForm('66 0f 76', 'pcmpeqd', 'Vdq Wdq')
-  # AddForm('f2 0f 78', 'insertq', 'Vdq Uq Ib Ib')
-  # AddForm('66 0f 79', 'extrq', 'Vdq Uq')
-  # AddForm('f2 0f 79', 'insertq', 'Vdq Udq')
-  # AddForm('66 0f 7c', 'haddpd', 'Vpd Wpd')
-  # AddForm('f2 0f 7c', 'haddps', 'Vps Wps')
-  # AddForm('66 0f 7d', 'hsubpd', 'Vpd Wpd')
-  # AddForm('f2 0f 7d', 'hsubps', 'Vps Wps')
+  # The AMD manual says 'Wq' rather than 'Wdq' for pshufhw and
+  # pshuflw, but it seems to be wrong.
+  AddForm('0f 70', 'pshufw', 'Pq Qq Ib')
+  AddForm('f3 0f 70', 'pshufhw', 'Vq Wdq Ib')
+  AddForm('66 0f 70', 'pshufd', 'Vdq Wdq Ib')
+  AddForm('f2 0f 70', 'pshuflw', 'Vq Wdq Ib')
+  AddForm('0f 74', 'pcmpeqb', 'Pq Qq')
+  AddForm('0f 75', 'pcmpeqw', 'Pq Qq')
+  AddForm('0f 76', 'pcmpeqd', 'Pq Qq')
+  AddForm('0f 77', 'emms', '')
+  AddForm('66 0f 74', 'pcmpeqb', 'Vdq Wdq')
+  AddForm('66 0f 75', 'pcmpeqw', 'Vdq Wdq')
+  AddForm('66 0f 76', 'pcmpeqd', 'Vdq Wdq')
+  AddForm('f2 0f 78', 'insertq', 'Vdq Uq Ib Ib')
+  AddForm('66 0f 79', 'extrq', 'Vdq Uq')
+  AddForm('f2 0f 79', 'insertq', 'Vdq Udq')
+  AddForm('66 0f 7c', 'haddpd', 'Vpd Wpd')
+  AddForm('f2 0f 7c', 'haddps', 'Vps Wps')
+  AddForm('66 0f 7d', 'hsubpd', 'Vpd Wpd')
+  AddForm('f2 0f 7d', 'hsubps', 'Vps Wps')
   AddForm('f3 0f 7e', 'movq', 'Vq Wq')
   if rex_w:
     AddForm('0f 7e', 'movq', 'Eq Pq') # Ed/q Pd/q
@@ -1353,8 +1353,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   if rex_w:
     Add('63', 'movsxd', [('reg', 64), ('rm', 32)])
 
-  # AddLW2('f3 0f b8', 'popcnt', ['reg', 'rm'])
-  # AddLW2('f3 0f bd', 'lzcnt', ['reg', 'rm'])
+  AddLW2('f3 0f b8', 'popcnt', ['reg', 'rm'])
+  AddLW2('f3 0f bd', 'lzcnt', ['reg', 'rm'])
 
   # Added in the 486.
   AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
@@ -1383,8 +1383,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # Add('66 0f c4', 'pinsrw', [('reg', 'xmm'), ('reg2', 32), ('imm', 8)])
   # Add('0f c5', 'pextrw', [('reg', 32), ('reg2', 'mmx'), ('imm', 8)])
   # Add('66 0f c5', 'pextrw', [('reg', 32), ('reg2', 'xmm'), ('imm', 8)])
-  # AddForm('0f c6', 'shufps', 'Vps Wps Ib')
-  # AddForm('66 0f c6', 'shufpd', 'Vpd Wpd Ib')
+  AddForm('0f c6', 'shufps', 'Vps Wps Ib')
+  AddForm('66 0f c6', 'shufpd', 'Vpd Wpd Ib')
 
   AddForm('66 0f d0', 'addsubpd', 'Vpd Wpd')
   AddForm('f2 0f d0', 'addsubps', 'Vps Wps')
@@ -1446,13 +1446,13 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddSSEMMXPair('0f fd', 'paddw')
   AddSSEMMXPair('0f fe', 'paddd')
 
-  # # SSE
-  # # Group 15
-  # if not nacl_mode:
-  #   Add('0f ae', 'fxsave', [('mem', 'fxsave_size')], modrm_opcode=0)
-  #   Add('0f ae', 'fxrstor', [('mem', 'fxsave_size')], modrm_opcode=1)
-  # Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
-  # Add('0f ae', 'stmxcsr', [('mem', 32)], modrm_opcode=3)
+  # SSE
+  # Group 15
+  if not nacl_mode:
+    Add('0f ae', 'fxsave', [('mem', 'fxsave_size')], modrm_opcode=0)
+    Add('0f ae', 'fxrstor', [('mem', 'fxsave_size')], modrm_opcode=1)
+  Add('0f ae', 'ldmxcsr', [('mem', 32)], modrm_opcode=2)
+  Add('0f ae', 'stmxcsr', [('mem', 32)], modrm_opcode=3)
   # TODO: The AMD manual permits 8 different encodings of each of
   # these three instructions (with any value of the 3-bit RM field).
   # The original x86-32 validator allows all of these.  However,
