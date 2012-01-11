@@ -782,8 +782,11 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     rm_allow_reg = not mem_access_only
     rm_allow_mem = True
     node = DftLabel('args', [(True, 'reg'), (True, 'rm')],
-                    ModRMNode('mmx', 'mmx64', rm_allow_reg, rm_allow_mem, node))
-    top_nodes.append(TrieOfList(['0f', '0f'], node))
+                    ModRMNode(has_rex, rex_r, rex_b, rex_b,
+                              'mmx', AttrsFromKind({}),
+                              'mmx64', AttrsFromKind({}),
+                              rm_allow_reg, rm_allow_mem, node))
+    top_nodes.append((['0f', '0f'], node))
 
   def AddFPMem(bytes, instr_name, modrm_opcode, size=32):
     Add(bytes, instr_name, [('mem', size)], modrm_opcode=modrm_opcode)
@@ -1069,7 +1072,6 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   #   # Add('0f 01 f8', 'swapgs', [])
   #   Add('0f 01 f9', 'rdtscp', [])
   # Add('0f 0e', 'femms', [])
-  # # TODO: 0f 0f (3DNow)
   # Group P: prefetches
   # TODO: Other modrm_opcode values for prefetches might be allowed.
   Add('0f 0d', 'prefetch', [('mem', 'prefetch_mem')], modrm_opcode=0)
@@ -1608,32 +1610,32 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddFPReg('df', 'fcomip', modrm_opcode=6)
   # skip 7
 
-  # Add3DNow([
-  #     (0x90, 'pfcmpge'),
-  #     (0xa0, 'pfcmpgt'),
-  #     (0xb0, 'pfcmpeq'),
-  #     (0x94, 'pfmin'),
-  #     (0xa4, 'pfmax'),
-  #     (0xb4, 'pfmul'),
-  #     (0x96, 'pfrcp'),
-  #     (0xa6, 'pfrcpit1'),
-  #     (0xb6, 'pfrcpit2'),
-  #     (0x97, 'pfrsqrt'),
-  #     (0xa7, 'pfrsqit1'),
-  #     (0xb7, 'pmulhrw'),
-  #     (0x0c, 'pi2fw'),
-  #     (0x1c, 'pf2iw'),
-  #     (0x0d, 'pi2fd'),
-  #     (0x1d, 'pf2id'),
-  #     (0x8a, 'pfnacc'),
-  #     (0x9a, 'pfsub'),
-  #     (0xaa, 'pfsubr'),
-  #     (0xbb, 'pswapd'),
-  #     (0x8e, 'pfpnacc'),
-  #     (0x9e, 'pfadd'),
-  #     (0xae, 'pfacc'),
-  #     (0xbf, 'pavgusb'),
-  #     ])
+  Add3DNow([
+      (0x90, 'pfcmpge'),
+      (0xa0, 'pfcmpgt'),
+      (0xb0, 'pfcmpeq'),
+      (0x94, 'pfmin'),
+      (0xa4, 'pfmax'),
+      (0xb4, 'pfmul'),
+      (0x96, 'pfrcp'),
+      (0xa6, 'pfrcpit1'),
+      (0xb6, 'pfrcpit2'),
+      (0x97, 'pfrsqrt'),
+      (0xa7, 'pfrsqit1'),
+      (0xb7, 'pmulhrw'),
+      (0x0c, 'pi2fw'),
+      (0x1c, 'pf2iw'),
+      (0x0d, 'pi2fd'),
+      (0x1d, 'pf2id'),
+      (0x8a, 'pfnacc'),
+      (0x9a, 'pfsub'),
+      (0xaa, 'pfsubr'),
+      (0xbb, 'pswapd'),
+      (0x8e, 'pfpnacc'),
+      (0x9e, 'pfadd'),
+      (0xae, 'pfacc'),
+      (0xbf, 'pavgusb'),
+      ])
 
   return top_nodes
 
