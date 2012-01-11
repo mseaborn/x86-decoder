@@ -626,7 +626,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
         return
       dest_kind = args[0][0]['kind']
       if dest_kind != 'rm':
-        assert dest_kind in ('reg', '*ax'), dest_kind
+        assert dest_kind in ('reg', '*ax', 'fixreg'), dest_kind
         return
     bytes = bytes.split()
     if nacl_mode:
@@ -923,15 +923,17 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   # Group 1a just contains 'pop'.
   AddLWPushPop(0x8f, 'pop', ['rm'], modrm_opcode=0)
 
-  # # 'nop' is really 'xchg %eax, %eax'.
-  # Add('90', 'nop', [])
-  # # This might also be called 'data16 nop'.
-  # Add('66 90', 'xchg ax, ax', [])
-  # # 'pause' is really 'rep nop'.
-  # Add('f3 90', 'pause', [])
-  # for reg_num in range(8):
-  #   if reg_num != 0:
-  #     AddLW(0x90 + reg_num, 'xchg', [('fixreg', reg_num), '*ax'])
+  if not has_rex:
+    # 'nop' is really 'xchg %eax, %eax'.
+    Add('90', 'nop', [])
+    # This might also be called 'data16 nop'.
+    Add('66 90', 'xchg ax, ax', [])
+    # 'pause' is really 'rep nop'.
+    Add('f3 90', 'pause', [])
+  # TODO: Could allow '48 90' (rex.W nop)
+  for reg_num in range(8):
+    if reg_num != 0:
+      AddLW(0x90 + reg_num, 'xchg', [FixReg(reg_num), '*ax'])
 
   if rex_w:
     # "Convert long to quad".  Sign-extends %ax into %eax.
@@ -1732,11 +1734,8 @@ def SuperInsts():
 
   def Munge(bytes):
     return bytes.split()
-  # Nops
-  # TODO: This overlaps with 90 defined elsewhere.
+  # Long nops
   # TODO: Add decodings of these instructions.
-  yield Munge('90')
-  yield Munge('66 90')
   yield Munge('0f 1f 00')
   yield Munge('0f 1f 40 00')
   yield Munge('0f 1f 44 00 00')
