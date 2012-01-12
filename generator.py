@@ -88,6 +88,7 @@ def GetOperandRegs(attrs, top_bit, reglist):
     yield (reg, regname, labels)
 
 mem_sizes = {
+  128: 'OWORD PTR ',
   64: 'QWORD PTR ',
   32: 'DWORD PTR ',
   16: 'WORD PTR ',
@@ -538,7 +539,8 @@ def SubstSize(dec, size):
 # Instructions which can use the 'lock' prefix.
 lock_whitelist = set([
     'adc', 'add', 'and', 'btc', 'btr', 'bts',
-    'cmpxchg', 'cmpxchg8b', 'dec', 'inc',
+    'cmpxchg', 'cmpxchg8b', 'cmpxchg16b',
+    'dec', 'inc',
     'neg', 'not', 'or', 'sbb', 'sub',
     'xadd', 'xchg', 'xor'])
 
@@ -625,7 +627,7 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
       if instr_name not in lock_whitelist:
         return
       dest_kind = args[0][0]['kind']
-      if dest_kind != 'rm':
+      if dest_kind not in ('rm', 'mem'):
         assert dest_kind in ('reg', '*ax', 'fixreg'), dest_kind
         return
     bytes = bytes.split()
@@ -1360,7 +1362,10 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
   AddPair2('0f', 0xb0, 'cmpxchg', ['rm', 'reg'])
   AddPair2('0f', 0xc0, 'xadd', ['rm', 'reg'])
   # # Group 9 just contains cmpxchg.
-  # Add('0f c7', 'cmpxchg8b', [('mem', 64)], modrm_opcode=1)
+  if rex_w:
+    Add('0f c7', 'cmpxchg16b', [('mem', 128)], modrm_opcode=1)
+  else:
+    Add('0f c7', 'cmpxchg8b', [('mem', 64)], modrm_opcode=1)
   for reg_num in range(8):
     # bswap is undefined when used with the data16 prefix (because
     # xchgw could be used for swapping bytes in a word instead),
