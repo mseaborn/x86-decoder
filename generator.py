@@ -956,13 +956,16 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     Add('99', 'cdq', [])
     # "Convert word to double word".  Fills %dx with the top bit of %ax.
     Add('66 99', 'cwd', [])
-  # # Note that assemblers and disassemblers treat 'fwait' as a prefix
-  # # such that 'fwait; fnXXX' is a shorthand for 'fXXX'.  (For example,
-  # # 'fwait; fnstenv ARG' can be written as 'fstenv ARG'.)  This might
-  # # cause cross-check tests to fail if these instructions are placed
-  # # together.  Really, though, fwait is an instruction in its own
-  # # right.
-  # Add('9b', 'fwait', [])
+  # Note that assemblers and disassemblers treat 'fwait' as a prefix
+  # such that 'fwait; fnXXX' is a shorthand for 'fXXX'.  (For example,
+  # 'fwait; fnstenv ARG' can be written as 'fstenv ARG'.)  This might
+  # cause cross-check tests to fail if these instructions are placed
+  # together.  Really, though, fwait is an instruction in its own
+  # right.
+  # TODO: Accept a REX prefix on fwait to match the original validator?
+  if not has_rex:
+    Add('9b', 'fwait', [])
+  # NaCl does not allow 'sahf' and 'lahf' on x86-64.
   # Add('9e', 'sahf', [])
   # Add('9f', 'lahf', [])
   Add('f4', 'hlt', [])
@@ -985,6 +988,8 @@ def GetCoreRoot(has_rex, rex_w, rex_r, rex_x, rex_b, nacl_mode,
     Add('fa', 'cli', [])
     Add('fb', 'sti', [])
 
+  # x86-64 NaCl does not allow 'leave' because it modifies the top 32
+  # bits of %rbp.
   # Add('c9', 'leave', [])
   # # 'data16 leave' is probably never useful, but we allow it for
   # # consistency with the original NaCl x86-32 validator.
