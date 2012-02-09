@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import json
 import sys
 import time
 import weakref
@@ -39,10 +40,8 @@ def MakeInterned(children, accept):
   return node
 
 
-EmptyNode = Trie()
-
-AcceptNode = Trie()
-AcceptNode.accept = True
+EmptyNode = MakeInterned({}, False)
+AcceptNode = MakeInterned({}, True)
 
 
 # Assumes that node1 is an already-interned node.
@@ -158,19 +157,17 @@ def Main(args):
   WriteToFile(output_filename, root)
 
 
-def WriteToFile(output_filename, root):
+def TrieToDict(root):
   node_list = GetAllNodes(root)
   for i, node in enumerate(node_list):
-    node.id = i
-  info = {"start": root.id,
+    # Stringify the ID because JSON requires dict keys to be strings.
+    node.id = str(i)
+  return {"start": root.id,
           "map": dict((node.id, dict((key, dest.id)
                                      for key, dest in node.children.iteritems()))
                       for node in node_list),
           "accepts": dict((node.id, node.accept)
                           for node in node_list)}
-  fh = open(output_filename, 'w')
-  fh.write(repr(info))
-  fh.close()
 
 
 def TrieFromDict(trie_data):
@@ -184,8 +181,16 @@ def TrieFromDict(trie_data):
   return MakeNode(trie_data['start'])
 
 
+def WriteToFile(output_filename, root):
+  fh = open(output_filename, 'w')
+  json.dump(TrieToDict(root), fh, sort_keys=True)
+  fh.close()
+
+
 def TrieFromFile(filename):
-  trie_data = eval(open(filename, 'r').read(), {})
+  fh = open(filename, 'r')
+  trie_data = json.load(fh)
+  fh.close()
   return TrieFromDict(trie_data)
 
 
