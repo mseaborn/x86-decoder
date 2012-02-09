@@ -159,14 +159,14 @@ def Main(args):
 
 def TrieToDict(root):
   node_list = GetAllNodes(root)
-  for i, node in enumerate(node_list):
-    # Stringify the ID because JSON requires dict keys to be strings.
-    node.id = str(i)
-  return {"start": root.id,
-          "map": dict((node.id, dict((key, dest.id)
-                                     for key, dest in node.children.iteritems()))
+  # We stringify the IDs because JSON requires dict keys to be strings.
+  node_to_id = dict((node, str(index)) for index, node in enumerate(node_list))
+  return {'start': node_to_id[root],
+          'map': dict((node_to_id[node],
+                       dict((key, node_to_id[dest])
+                            for key, dest in node.children.iteritems()))
                       for node in node_list),
-          "accepts": dict((node.id, node.accept)
+          'accepts': dict((node_to_id[node], node.accept)
                           for node in node_list)}
 
 
