@@ -690,6 +690,10 @@ def GetCoreRoot(nacl_mode, mem_access_only=False, lockable_only=False,
   for reg_num in range(8):
     if reg_num != 0:
       AddLW(0x90 + reg_num, 'xchg', [('fixreg', reg_num), '*ax'])
+  # Long nops
+  Add('0f 1f', 'nop', [('rm', 32)], modrm_opcode=0)
+  if not nacl_mode:
+    Add('0f 1f', 'nop', [('rm', 16)], modrm_opcode=0, data16=True)
 
   # "Convert word to long".  Sign-extends %ax into %eax.
   Add('98', 'cwde', [])
