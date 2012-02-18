@@ -217,6 +217,9 @@ TestCase(accept=False, asm='mov 0x1234(%rsp, %rbx), %eax')
 TestCase(accept=False, asm='mov 0x1234(%rbp, %rbx), %eax')
 TestCase(accept=True, asm='mov %ebx, %ebx; mov 0x1234(%rsp, %rbx), %eax')
 TestCase(accept=True, asm='mov %ebx, %ebx; mov 0x1234(%rbp, %rbx), %eax')
+# Invalid base registers.
+TestCase(accept=False, asm='mov %eax, %eax; mov (, %rax), %eax')
+TestCase(accept=False, asm='mov %eax, %eax; mov (%rax, %rax), %eax')
 
 # 'lea' is not a memory access.
 TestCase(accept=True, asm='lea (%rbx, %rcx, 4), %rax')

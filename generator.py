@@ -195,10 +195,6 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
       # 5 is a special case and is not always %ebp.
       # %esi/%edi are missing from headings in table in doc.
       for base_reg, base_regname in GetExtendedRegs(rex_b, regs64):
-        # XXX: NaCl constraint
-        if (rm_size not in unsandboxed_mem
-            and base_regname not in nacl_base_regs):
-          continue
         labels = []
         if index_regname == 'riz' and base_reg == 4 and scale == 0:
           index_result = ''
@@ -213,6 +209,10 @@ def Sib(rex_x, rex_b, mod, rm_size, disp_size, disp_str, tail):
         else:
           extra = ''
           disp_size2 = 0
+        # XXX: NaCl constraint
+        if (rm_size not in unsandboxed_mem
+            and base_regname not in nacl_base_regs):
+          continue
         parts = [base_regname, index_result, extra, disp_str]
         if (index_regname == 'riz' and base_reg == 5 and
             mod == 0 and scale == 0):
