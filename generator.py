@@ -1860,7 +1860,7 @@ def Main():
   dfa_root = MergeMany([dfa_root] + superinsts, MergeAcceptTypes)
   Log('DFA node count:')
   Log(TrieNodeCount(dfa_root))
-  dest_file = 'x86_32.trie'
+  dest_file = 'x86_64.trie'
   Log('Dumping trie to %r...' % dest_file)
   trie.WriteToFile(dest_file, dfa_root)
   Log('Done')
